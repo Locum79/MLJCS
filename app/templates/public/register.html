@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register — {{ cert_type.name }}</title>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .form-container { background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); width: 100%; max-width: 480px; }
+        h1 { font-size: 20px; margin-bottom: 24px; }
+        label { display: block; margin-bottom: 4px; font-weight: 500; }
+        input { width: 100%; padding: 10px; margin-bottom: 16px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 12px; background: #1a1a2e; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; }
+        button:hover { background: #16213e; }
+        .success { color: #4CAF50; text-align: center; margin-top: 16px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="form-container">
+        <h1>Register for {{ cert_type.name }}<br><small>{{ cert_type.period }}</small></h1>
+        <form id="regForm">
+            <label>First Name</label>
+            <input type="text" name="first_name" required>
+            
+            <label>Surname</label>
+            <input type="text" name="surname" required>
+            
+            <label>Other Name (Optional)</label>
+            <input type="text" name="other_name">
+            
+            <label>Email</label>
+            <input type="email" name="email" required>
+            
+            <button type="submit">Register</button>
+        </form>
+        <div class="success" id="successMsg">✓ Registration successful!</div>
+    </div>
+    
+    <script>
+        document.getElementById('regForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const response = await fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            });
+            if (response.ok) {
+                document.getElementById('successMsg').style.display = 'block';
+                e.target.reset();
+            }
+        });
+    </script>
+</body>
+</html>

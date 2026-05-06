@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CertifyStack — Admin</title>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1>CertifyStack</h1>
+        <span class="logout"><a href="{{ url_for('auth.logout') }}">Logout</a></span>
+    </div>
+    
+    <div class="container">
+        <div class="filter-bar">
+            <label>Certificate Type:</label>
+            <select id="certTypeFilter" onchange="loadUsers()">
+                {% for ct in cert_types %}
+                <option value="{{ ct.id }}">{{ ct.name }} — {{ ct.period }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        
+        <div class="action-bar">
+            <button class="btn-approve" onclick="batchAction('approve')">✓ Approve</button>
+            <button class="btn-reject" onclick="batchAction('reject')">✗ Reject</button>
+            <button class="btn-send" onclick="batchAction('send')">📧 Send Selected</button>
+            <button class="btn-send-all" onclick="sendAllApproved()">📧 SEND ALL Approved</button>
+            <button class="btn-delete" onclick="batchAction('delete')">🗑 Delete</button>
+        </div>
+        
+        <table id="usersTable" class="display" style="width:100%">
+            <thead>
+                <tr>
+                    <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
+                    <th>Full Name</th>
+                    <th>Email</th>
+                    <th>Certificate ID</th>
+                    <th>Status</th>
+                    <th>Registered</th>
+                    <th>Nudge</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+    
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script>
+        let table;
+        
+        function loadUsers() {
+            const certTypeId = $('#certTypeFilter').val();
+            if (table) table.destroy();
+            
+            table = $('#usersTable').DataTable({
+                ajax: `/api/users/${certTypeId}`,
+                columns: [
+                    { data: 'id', render: () => '<input type="checkbox" class="user-checkbox">' },
+                    { data: 'full_name' },
+                    { data: 'email' },
+                    { data: 'certificate_id' },
+                    { data: 'status', render: d => `<span class="status-${d}">${d.toUpperCase()}</span>` },
+                    { data: 'created_at' },
+                    { data: 'id', render: id => `<button onclick="nudgeUser(${id})" class="btn-nudge-sm">Nudge</button>` }
+                ]
+            });
+        }
+        
+        function getSelectedIds() {
+            const ids = [];
+            $('.user-checkbox:checked').each(function() {
+                ids.push(table.row($(this).closest('tr')).data().id);
+            });
+            return ids;
+        }
+        
+        function batchAction(action) {
+            const ids = getSelectedIds();
+            if (!ids.length) return alert('Select users first');
+            if (!confirm(`${action.toUpperCase()} ${ids.length} users?`)) return;
+            
+            fetch(`/api/${action}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_ids: ids, cert_type_id: $('#certTypeFilter').val() })
+            }).then(r => r.json()).then(d => { alert(d.message); loadUsers(); });
+        }
+        
+        function sendAllApproved() {
+            if (!confirm('Send to ALL approved users?')) return;
+            fetch('/api/send-all-approved', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ cert_type_id: $('#certTypeFilter').val() })
+            }).then(r => r.json()).then(d => { alert(d.message); loadUsers(); });
+        }
+        
+        function nudgeUser(userId) {
+            fetch('/api/nudge', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ user_id: userId })
+            }).then(r => r.json()).then(d => alert(d.message));
+        }
+        
+        function toggleSelectAll() {
+            $('.user-checkbox').prop('checked', $('#selectAll').prop('checked'));
+        }
+        
+        $(document).ready(() => loadUsers());
+    </script>
+</body>
+</html>
