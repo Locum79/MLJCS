@@ -5,7 +5,13 @@ load_dotenv()
 
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///certifystack.db')
+    
+    # Fix Railway's postgres:// to postgresql://
+    database_url = os.environ.get('DATABASE_URL', 'sqlite:///certifystack.db')
+    if database_url and database_url.startswith('postgres://'):
+        database_url = database_url.replace('postgres://', 'postgresql://', 1)
+    SQLALCHEMY_DATABASE_URI = database_url
+    
     REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379')
     
     MAIL_SERVER = os.environ.get('MAIL_SERVER', 'smtp.gmail.com')
