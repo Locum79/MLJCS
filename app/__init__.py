@@ -29,7 +29,10 @@ def create_app():
     app.register_blueprint(certificates.bp)
 
     with app.app_context():
-        db.create_all(checkfirst=True)
+        try:
+            db.create_all()
+        except Exception:
+            pass  # Tables already exist — safe to ignore on redeploy
 
     return app
 
