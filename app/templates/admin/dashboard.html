@@ -1,117 +1,637 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CertifyStack — Admin</title>
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CertifyStack — Admin</title>
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+<style>
+:root {
+  --green:#1a7a3c; --green-dark:#145e2e; --green-light:#e8f5ec;
+  --red:#e53935; --amber:#f59e0b; --blue:#1d6fa4;
+  --bg:#f4f6f8; --card:#fff; --border:#e0e0e0;
+  --text:#1a1a2e; --muted:#6b7280;
+  --radius:10px; --shadow:0 2px 12px rgba(0,0,0,.08);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* HEADER */
+.header{background:var(--green);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.header h1{font-size:18px;font-weight:700;letter-spacing:.3px}
+.header-right{display:flex;gap:12px;align-items:center}
+.header a{color:rgba(255,255,255,.85);text-decoration:none;font-size:13px}
+
+/* TABS */
+.tabs{display:flex;background:#fff;border-bottom:2px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab-btn{padding:13px 20px;font-size:13px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tab-btn.active{color:var(--green);border-bottom-color:var(--green)}
+
+/* PANELS */
+.panel{display:none;padding:16px}
+.panel.active{display:block}
+
+/* CARDS */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
+.card-title{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+
+/* LIBRARY GRID */
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.lib-card{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:.2s;position:relative;text-align:center}
+.lib-card:hover,.lib-card.selected{border-color:var(--green);background:var(--green-light)}
+.lib-card .lib-name{font-size:13px;font-weight:600;margin-top:8px}
+.lib-card .lib-period{font-size:11px;color:var(--muted);margin-top:3px}
+.lib-card .lib-count{font-size:11px;color:var(--green);margin-top:3px}
+.lib-card .lib-icon{font-size:32px}
+.lib-card .del-cert{position:absolute;top:6px;right:6px;background:none;border:none;color:#ccc;cursor:pointer;font-size:14px;line-height:1}
+.lib-card .del-cert:hover{color:var(--red)}
+.add-lib-card{border-style:dashed;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:110px}
+.add-lib-card:hover{border-color:var(--green);color:var(--green)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s}
+.btn-green{background:var(--green);color:#fff} .btn-green:hover{background:var(--green-dark)}
+.btn-outline{background:#fff;color:var(--green);border:1.5px solid var(--green)} .btn-outline:hover{background:var(--green-light)}
+.btn-red{background:var(--red);color:#fff}
+.btn-amber{background:var(--amber);color:#fff}
+.btn-blue{background:var(--blue);color:#fff}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:5px}
+.btn-xs{padding:3px 8px;font-size:11px;border-radius:4px}
+
+/* ACTION BAR */
+.action-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+.action-bar .spacer{flex:1}
+
+/* TABLE */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.dataTable{font-size:12px;width:100%!important}
+table.dataTable thead th{background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:10px 8px}
+table.dataTable tbody tr:hover{background:var(--green-light)}
+table.dataTable tbody td{padding:9px 8px;vertical-align:middle}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase}
+.status-registered{background:#fef3c7;color:#92400e}
+.status-approved{background:#d1fae5;color:#065f46}
+.status-sending{background:#dbeafe;color:#1e40af}
+.status-sent{background:#d1fae5;color:#065f46}
+.status-rejected{background:#fee2e2;color:#991b1b}
+.qr-toggle{cursor:pointer;font-size:18px;user-select:none;transition:.15s}
+.qr-toggle:hover{transform:scale(1.2)}
+
+/* FORMS */
+.form-group{margin-bottom:14px}
+.form-group label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--muted)}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;outline:none;transition:.15s;font-family:inherit}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--green)}
+.form-group textarea{min-height:130px;resize:vertical}
+
+/* DRAFT CARDS */
+.draft-card{border:1.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer;transition:.15s}
+.draft-card:hover,.draft-card.selected{border-color:var(--green);background:var(--green-light)}
+.draft-subject{font-size:13px;font-weight:600}
+.draft-preview{font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.draft-meta{font-size:10px;color:var(--muted);margin-top:5px}
+.template-vars{font-size:11px;color:var(--muted);background:#f8f8f8;border-radius:6px;padding:8px 10px;margin-top:8px}
+.template-vars code{background:#e8e8e8;padding:1px 5px;border-radius:3px;font-size:10px}
+
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:16px}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:var(--radius);padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;position:relative}
+.modal h2{font-size:16px;font-weight:700;margin-bottom:16px}
+.modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)}
+
+/* TOAST */
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:11px 22px;border-radius:25px;font-size:13px;z-index:999;opacity:0;transition:.3s;pointer-events:none}
+#toast.show{opacity:1}
+
+/* FILE UPLOAD DROP */
+.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:30px;text-align:center;color:var(--muted);cursor:pointer;transition:.2s}
+.drop-zone:hover,.drop-zone.dragover{border-color:var(--green);background:var(--green-light);color:var(--green)}
+.drop-zone input{display:none}
+
+/* REGISTER LINK */
+.reg-link{font-size:11px;color:var(--blue);word-break:break-all}
+
+/* RESPONSIVE */
+@media(max-width:600px){
+  .header h1{font-size:15px}
+  .panel{padding:12px}
+  .btn{padding:8px 12px;font-size:12px}
+}
+</style>
 </head>
 <body>
-    <div class="header">
-        <h1>CertifyStack</h1>
-        <span class="logout"><a href="{{ url_for('auth.logout') }}">Logout</a></span>
+
+<div class="header">
+  <h1>🏅 CertifyStack</h1>
+  <div class="header-right">
+    <span id="selectedCertName" style="font-size:12px;opacity:.8"></span>
+    <a href="{{ url_for('auth.logout') }}">Logout</a>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('library')">📚 Library</button>
+  <button class="tab-btn" onclick="switchTab('participants')">👥 Participants</button>
+  <button class="tab-btn" onclick="switchTab('messages')">✉️ Messages</button>
+</div>
+
+<!-- ═══════════════ TAB: LIBRARY ═══════════════ -->
+<div id="tab-library" class="panel active">
+  <div class="card">
+    <div class="card-title">📚 Certificate Library
+      <button class="btn btn-green btn-sm" onclick="openModal('addCertModal')" style="margin-left:auto">+ Add Certificate</button>
     </div>
-    
-    <div class="container">
-        <div class="filter-bar">
-            <label>Certificate Type:</label>
-            <select id="certTypeFilter" onchange="loadUsers()">
-                {% for ct in cert_types %}
-                <option value="{{ ct.id }}">{{ ct.name }} — {{ ct.period }}</option>
-                {% endfor %}
-            </select>
-        </div>
-        
-        <div class="action-bar">
-            <button class="btn-approve" onclick="batchAction('approve')">✓ Approve</button>
-            <button class="btn-reject" onclick="batchAction('reject')">✗ Reject</button>
-            <button class="btn-send" onclick="batchAction('send')">📧 Send Selected</button>
-            <button class="btn-send-all" onclick="sendAllApproved()">📧 SEND ALL Approved</button>
-            <button class="btn-delete" onclick="batchAction('delete')">🗑 Delete</button>
-        </div>
-        
+    <div class="lib-grid" id="libGrid">
+      <div class="lib-card add-lib-card" onclick="openModal('addCertModal')">
+        <span style="font-size:28px">＋</span>
+        <span style="font-size:12px;margin-top:6px">Add Master</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ TAB: PARTICIPANTS ═══════════════ -->
+<div id="tab-participants" class="panel">
+
+  <div class="card" id="noSelectionMsg">
+    <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0">← Select a certificate from the Library tab to manage participants</p>
+  </div>
+
+  <div id="participantsContent" style="display:none">
+    <div class="card" style="padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span id="activeLibName" style="font-weight:700;font-size:14px"></span>
+        <span id="activeLibPeriod" style="font-size:12px;color:var(--muted)"></span>
+        <span class="spacer"></span>
+        <button class="btn btn-outline btn-sm" onclick="openModal('addParticipantModal')">+ Add Participant</button>
+      </div>
+      <div style="margin-top:8px">
+        <a id="regLinkDisplay" class="reg-link" href="#" target="_blank"></a>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <button class="btn btn-green btn-sm" onclick="batchAction('approve')">✓ Approve</button>
+      <button class="btn btn-red btn-sm" onclick="batchAction('reject')">✗ Reject</button>
+      <button class="btn btn-blue btn-sm" onclick="openSendModal(false)">📧 Send Selected</button>
+      <button class="btn btn-amber btn-sm" onclick="openSendModal(true)">📧 Send ALL Approved</button>
+      <button class="btn btn-sm" style="background:#607d8b;color:#fff" onclick="batchAction('delete')">🗑 Delete</button>
+    </div>
+
+    <div class="card" style="padding:0">
+      <div class="table-wrap">
         <table id="usersTable" class="display" style="width:100%">
-            <thead>
-                <tr>
-                    <th><input type="checkbox" id="selectAll" onclick="toggleSelectAll()"></th>
-                    <th>Full Name</th>
-                    <th>Email</th>
-                    <th>Certificate ID</th>
-                    <th>Status</th>
-                    <th>Registered</th>
-                    <th>Nudge</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
+          <thead>
+            <tr>
+              <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Cert ID</th>
+              <th>QR</th>
+              <th>Status</th>
+              <th>Date</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody></tbody>
         </table>
+      </div>
     </div>
-    
-    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
-    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-    <script>
-        let table;
-        
-        function loadUsers() {
-            const certTypeId = $('#certTypeFilter').val();
-            if (table) table.destroy();
-            
-            table = $('#usersTable').DataTable({
-                ajax: `/api/users/${certTypeId}`,
-                columns: [
-                    { data: 'id', render: () => '<input type="checkbox" class="user-checkbox">' },
-                    { data: 'full_name' },
-                    { data: 'email' },
-                    { data: 'certificate_id' },
-                    { data: 'status', render: d => `<span class="status-${d}">${d.toUpperCase()}</span>` },
-                    { data: 'created_at' },
-                    { data: 'id', render: id => `<button onclick="nudgeUser(${id})" class="btn-nudge-sm">Nudge</button>` }
-                ]
-            });
-        }
-        
-        function getSelectedIds() {
-            const ids = [];
-            $('.user-checkbox:checked').each(function() {
-                ids.push(table.row($(this).closest('tr')).data().id);
-            });
-            return ids;
-        }
-        
-        function batchAction(action) {
-            const ids = getSelectedIds();
-            if (!ids.length) return alert('Select users first');
-            if (!confirm(`${action.toUpperCase()} ${ids.length} users?`)) return;
-            
-            fetch(`/api/${action}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user_ids: ids, cert_type_id: $('#certTypeFilter').val() })
-            }).then(r => r.json()).then(d => { alert(d.message); loadUsers(); });
-        }
-        
-        function sendAllApproved() {
-            if (!confirm('Send to ALL approved users?')) return;
-            fetch('/api/send-all-approved', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ cert_type_id: $('#certTypeFilter').val() })
-            }).then(r => r.json()).then(d => { alert(d.message); loadUsers(); });
-        }
-        
-        function nudgeUser(userId) {
-            fetch('/api/nudge', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ user_id: userId })
-            }).then(r => r.json()).then(d => alert(d.message));
-        }
-        
-        function toggleSelectAll() {
-            $('.user-checkbox').prop('checked', $('#selectAll').prop('checked'));
-        }
-        
-        $(document).ready(() => loadUsers());
-    </script>
+  </div>
+</div>
+
+<!-- ═══════════════ TAB: MESSAGES ═══════════════ -->
+<div id="tab-messages" class="panel">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+
+    <div class="card">
+      <div class="card-title">✉️ Email Drafts
+        <button class="btn btn-green btn-sm" onclick="openModal('draftModal');editingDraftId=null;clearDraftForm()" style="margin-left:auto">+ New Draft</button>
+      </div>
+      <div id="draftsList"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🔤 Template Variables</div>
+      <div class="template-vars">
+        Use these in subject and body:<br><br>
+        <code>{first_name}</code> — recipient's first name<br>
+        <code>{full_name}</code> — full name as on certificate<br>
+        <code>{cert_name}</code> — certificate course name<br>
+        <code>{cert_id}</code> — unique certificate ID<br>
+        <code>{issued_date}</code> — date certificate was sent<br><br>
+        <strong>Example body:</strong><br>
+        <em>Dear {first_name}, Congratulations on completing {cert_name}! Your certificate ID is {cert_id}.</em>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- ════════ MODALS ════════ -->
+
+<!-- Add Certificate Modal -->
+<div class="modal-overlay" id="addCertModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('addCertModal')">✕</button>
+    <h2>Add Master Certificate</h2>
+    <div class="form-group">
+      <label>Certificate Name</label>
+      <input id="newCertName" type="text" placeholder="e.g. Manual Handling Training">
+    </div>
+    <div class="form-group">
+      <label>Period / Cohort</label>
+      <input id="newCertPeriod" type="text" placeholder="e.g. March 2026">
+    </div>
+    <div class="form-group">
+      <label>Master File (PDF or high-res PNG)</label>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('masterFileInput').click()">
+        <div id="dropLabel">📄 Click or drag & drop master certificate</div>
+        <input type="file" id="masterFileInput" accept=".pdf,.png" onchange="handleFileSelect(this)">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Default Email Message (optional — uses template if blank)</label>
+      <textarea id="newCertEmail" placeholder="Dear {first_name}, Congratulations on completing {cert_name}..."></textarea>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('addCertModal')">Cancel</button>
+      <button class="btn btn-green" onclick="uploadCertType()">Upload & Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Participant Modal -->
+<div class="modal-overlay" id="addParticipantModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('addParticipantModal')">✕</button>
+    <h2>Add Participant</h2>
+    <div class="form-group"><label>First Name</label><input id="pFirstName" type="text"></div>
+    <div class="form-group"><label>Surname</label><input id="pSurname" type="text"></div>
+    <div class="form-group"><label>Other Name (optional)</label><input id="pOtherName" type="text"></div>
+    <div class="form-group"><label>Email</label><input id="pEmail" type="email"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('addParticipantModal')">Cancel</button>
+      <button class="btn btn-green" onclick="addParticipant()">Add</button>
+    </div>
+  </div>
+</div>
+
+<!-- Send Modal -->
+<div class="modal-overlay" id="sendModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('sendModal')">✕</button>
+    <h2 id="sendModalTitle">Send Certificates</h2>
+    <p id="sendModalDesc" style="font-size:13px;color:var(--muted);margin-bottom:16px"></p>
+    <div class="form-group">
+      <label>Email Message (optional — select draft or use default)</label>
+      <select id="sendDraftSelect" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
+        <option value="">— Use default template —</option>
+      </select>
+    </div>
+    <div id="draftPreview" style="display:none;margin-top:8px">
+      <div class="form-group"><label>Subject Preview</label><input id="previewSubject" type="text" readonly style="background:#f9f9f9"></div>
+      <div class="form-group"><label>Body Preview</label><textarea id="previewBody" readonly style="background:#f9f9f9;min-height:100px"></textarea></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('sendModal')">Cancel</button>
+      <button class="btn btn-green" onclick="confirmSend()">📧 Send Now</button>
+    </div>
+  </div>
+</div>
+
+<!-- Draft Edit Modal -->
+<div class="modal-overlay" id="draftModal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('draftModal')">✕</button>
+    <h2 id="draftModalTitle">New Draft</h2>
+    <div class="form-group"><label>Subject</label><input id="draftSubject" type="text" placeholder="Your {cert_name} Certificate — MLJ"></div>
+    <div class="form-group"><label>Body</label><textarea id="draftBody" placeholder="Dear {first_name},&#10;&#10;Congratulations..."></textarea></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-outline" onclick="closeModal('draftModal')">Cancel</button>
+      <button class="btn btn-green" onclick="saveDraft()">Save Draft</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script>
+let table, activeCertTypeId = null, sendAllMode = false, editingDraftId = null;
+let certTypes = [], drafts = [];
+
+// ── TABS ─────────────────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'messages') loadDrafts();
+}
+
+// ── MODALS ───────────────────────────────────────────────────────────────────
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
+
+// ── TOAST ────────────────────────────────────────────────────────────────────
+function toast(msg, dur=3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+// ── LIBRARY ──────────────────────────────────────────────────────────────────
+async function loadLibrary() {
+  const res = await fetch('/api/cert-types');
+  certTypes = await res.json();
+  renderLibrary();
+}
+
+function renderLibrary() {
+  const grid = document.getElementById('libGrid');
+  grid.innerHTML = '';
+  certTypes.forEach(ct => {
+    const card = document.createElement('div');
+    card.className = 'lib-card' + (ct.id === activeCertTypeId ? ' selected' : '');
+    card.innerHTML = `
+      <button class="del-cert" onclick="deleteCertType(event,${ct.id})">✕</button>
+      <div class="lib-icon">${ct.master_file_type==='png'?'🖼️':'📄'}</div>
+      <div class="lib-name">${ct.name}</div>
+      <div class="lib-period">${ct.period}</div>
+      <div class="lib-count">${ct.user_count} participants</div>`;
+    card.addEventListener('click', () => selectCertType(ct));
+    grid.appendChild(card);
+  });
+  // Add button
+  const add = document.createElement('div');
+  add.className = 'lib-card add-lib-card';
+  add.innerHTML = '<span style="font-size:28px">＋</span><span style="font-size:12px;margin-top:6px">Add Master</span>';
+  add.onclick = () => openModal('addCertModal');
+  grid.appendChild(add);
+}
+
+function selectCertType(ct) {
+  activeCertTypeId = ct.id;
+  document.getElementById('selectedCertName').textContent = ct.name;
+  document.getElementById('activeLibName').textContent = ct.name;
+  document.getElementById('activeLibPeriod').textContent = ct.period;
+  const regUrl = window.location.origin + '/register/' + ct.registration_token;
+  const link = document.getElementById('regLinkDisplay');
+  link.textContent = '🔗 ' + regUrl;
+  link.href = regUrl;
+  document.getElementById('noSelectionMsg').style.display = 'none';
+  document.getElementById('participantsContent').style.display = 'block';
+  renderLibrary();
+  loadUsers();
+  // Switch to participants tab
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-participants').classList.add('active');
+  document.querySelectorAll('.tab-btn')[1].classList.add('active');
+}
+
+async function deleteCertType(e, id) {
+  e.stopPropagation();
+  if (!confirm('Remove this certificate from library?')) return;
+  await fetch('/api/cert-types/' + id, { method: 'DELETE' });
+  if (activeCertTypeId === id) activeCertTypeId = null;
+  loadLibrary();
+  toast('Removed from library');
+}
+
+// ── UPLOAD ───────────────────────────────────────────────────────────────────
+function handleFileSelect(input) {
+  const label = document.getElementById('dropLabel');
+  label.textContent = input.files[0] ? '✅ ' + input.files[0].name : '📄 Click or drag & drop master certificate';
+}
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  const fi = document.getElementById('masterFileInput');
+  fi.files = e.dataTransfer.files;
+  handleFileSelect(fi);
+});
+
+async function uploadCertType() {
+  const name = document.getElementById('newCertName').value.trim();
+  const period = document.getElementById('newCertPeriod').value.trim();
+  const file = document.getElementById('masterFileInput').files[0];
+  const emailMsg = document.getElementById('newCertEmail').value.trim();
+  if (!name || !period || !file) { toast('Name, period and file required'); return; }
+  const fd = new FormData();
+  fd.append('name', name);
+  fd.append('period', period);
+  fd.append('master_file', file);
+  if (emailMsg) fd.append('email_message', emailMsg);
+  const res = await fetch('/api/cert-types', { method:'POST', body:fd });
+  const data = await res.json();
+  if (data.error) { toast('Error: ' + data.error); return; }
+  closeModal('addCertModal');
+  document.getElementById('newCertName').value = '';
+  document.getElementById('newCertPeriod').value = '';
+  document.getElementById('masterFileInput').value = '';
+  document.getElementById('newCertEmail').value = '';
+  document.getElementById('dropLabel').textContent = '📄 Click or drag & drop master certificate';
+  toast('✅ Certificate added to library');
+  loadLibrary();
+}
+
+// ── PARTICIPANTS ─────────────────────────────────────────────────────────────
+function loadUsers() {
+  if (!activeCertTypeId) return;
+  if (table) { table.destroy(); table = null; }
+  table = $('#usersTable').DataTable({
+    ajax: { url: `/api/users/${activeCertTypeId}`, dataSrc: 'data' },
+    pageLength: 10,
+    columns: [
+      { data:'id', render:() => '<input type="checkbox" class="user-checkbox">', orderable:false },
+      { data:'full_name' },
+      { data:'email' },
+      { data:'certificate_id', render: d => `<code style="font-size:10px">${d}</code>` },
+      { data:null, orderable:false, render: row => `<span class="qr-toggle" title="${row.include_qr?'QR enabled':'QR disabled'}" onclick="toggleQR(${row.id},this)">${row.include_qr?'📲':'⬜'}</span>` },
+      { data:'status', render: d => `<span class="status-badge status-${d}">${d}</span>` },
+      { data:'created_at', render: d => `<span style="font-size:11px;color:var(--muted)">${d}</span>` },
+      { data:'id', orderable:false, render: id => `<button class="btn btn-sm" style="background:#9c27b0;color:#fff" onclick="nudge(${id})">Nudge</button>` }
+    ],
+    language:{ emptyTable:'No participants yet' },
+    dom: '<"top"f>rt<"bottom"ip>'
+  });
+}
+
+async function toggleQR(userId, el) {
+  const res = await fetch('/api/users/toggle-qr', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user_id:userId}) });
+  const data = await res.json();
+  el.textContent = data.include_qr ? '📲' : '⬜';
+  el.title = data.include_qr ? 'QR enabled' : 'QR disabled';
+  toast(data.include_qr ? 'QR code enabled for this participant' : 'QR code disabled');
+}
+
+function getSelectedIds() {
+  const ids = [];
+  $('.user-checkbox:checked').each(function() {
+    const row = table.row($(this).closest('tr')).data();
+    if (row) ids.push(row.id);
+  });
+  return ids;
+}
+
+function toggleSelectAll() {
+  $('.user-checkbox').prop('checked', document.getElementById('selectAll').checked);
+}
+
+async function batchAction(action) {
+  const ids = getSelectedIds();
+  if (!ids.length) { toast('Select participants first'); return; }
+  if (!confirm(`${action.toUpperCase()} ${ids.length} participant(s)?`)) return;
+  const res = await fetch(`/api/${action}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ user_ids:ids, cert_type_id:activeCertTypeId })
+  });
+  const data = await res.json();
+  toast(data.message);
+  loadUsers();
+}
+
+async function addParticipant() {
+  const payload = {
+    first_name: document.getElementById('pFirstName').value.trim(),
+    surname: document.getElementById('pSurname').value.trim(),
+    other_name: document.getElementById('pOtherName').value.trim(),
+    email: document.getElementById('pEmail').value.trim(),
+    cert_type_id: activeCertTypeId
+  };
+  if (!payload.first_name || !payload.surname || !payload.email) { toast('First name, surname and email required'); return; }
+  const res = await fetch('/api/users/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  const data = await res.json();
+  closeModal('addParticipantModal');
+  ['pFirstName','pSurname','pOtherName','pEmail'].forEach(id => document.getElementById(id).value = '');
+  toast('✅ ' + data.message);
+  loadUsers();
+}
+
+async function nudge(userId) {
+  const res = await fetch('/api/nudge', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user_id:userId}) });
+  const d = await res.json();
+  toast(d.message);
+}
+
+// ── SEND ─────────────────────────────────────────────────────────────────────
+function openSendModal(allMode) {
+  sendAllMode = allMode;
+  if (!allMode && !getSelectedIds().length) { toast('Select participants first'); return; }
+  document.getElementById('sendModalTitle').textContent = allMode ? 'Send to ALL Approved' : `Send to ${getSelectedIds().length} selected`;
+  document.getElementById('sendModalDesc').textContent = allMode
+    ? 'All participants with "approved" status will receive their certificates.'
+    : `${getSelectedIds().length} selected participant(s) will receive their certificates.`;
+  populateDraftSelect();
+  openModal('sendModal');
+}
+
+function populateDraftSelect() {
+  const sel = document.getElementById('sendDraftSelect');
+  sel.innerHTML = '<option value="">— Use default template —</option>';
+  drafts.forEach(d => sel.appendChild(new Option(d.subject, d.id)));
+}
+
+document.getElementById('sendDraftSelect').addEventListener('change', function() {
+  const preview = document.getElementById('draftPreview');
+  if (!this.value) { preview.style.display='none'; return; }
+  const draft = drafts.find(d => d.id == this.value);
+  if (draft) {
+    document.getElementById('previewSubject').value = draft.subject;
+    document.getElementById('previewBody').value = draft.body;
+    preview.style.display = 'block';
+  }
+});
+
+async function confirmSend() {
+  const draftId = document.getElementById('sendDraftSelect').value || null;
+  const endpoint = sendAllMode ? '/api/send-all-approved' : '/api/send';
+  const payload = { cert_type_id: activeCertTypeId, draft_id: draftId };
+  if (!sendAllMode) payload.user_ids = getSelectedIds();
+  const res = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  closeModal('sendModal');
+  toast('📧 ' + data.message);
+  loadUsers();
+}
+
+// ── DRAFTS ───────────────────────────────────────────────────────────────────
+async function loadDrafts() {
+  const res = await fetch('/api/drafts');
+  drafts = await res.json();
+  renderDrafts();
+}
+
+function renderDrafts() {
+  const list = document.getElementById('draftsList');
+  if (!drafts.length) { list.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0">No drafts yet</p>'; return; }
+  list.innerHTML = drafts.map(d => `
+    <div class="draft-card" id="draft-${d.id}">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div class="draft-subject">${d.subject}</div>
+          <div class="draft-preview">${d.body}</div>
+          <div class="draft-meta">Updated ${d.updated_at}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-outline btn-xs" onclick="editDraft(${d.id})">Edit</button>
+          <button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="deleteDraft(${d.id})">Del</button>
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function clearDraftForm() {
+  document.getElementById('draftSubject').value = '';
+  document.getElementById('draftBody').value = '';
+  document.getElementById('draftModalTitle').textContent = 'New Draft';
+  editingDraftId = null;
+}
+
+function editDraft(id) {
+  const d = drafts.find(x => x.id === id);
+  if (!d) return;
+  editingDraftId = id;
+  document.getElementById('draftModalTitle').textContent = 'Edit Draft';
+  document.getElementById('draftSubject').value = d.subject;
+  document.getElementById('draftBody').value = d.body;
+  openModal('draftModal');
+}
+
+async function saveDraft() {
+  const payload = {
+    subject: document.getElementById('draftSubject').value.trim(),
+    body: document.getElementById('draftBody').value.trim()
+  };
+  if (!payload.subject || !payload.body) { toast('Subject and body required'); return; }
+  const url = editingDraftId ? `/api/drafts/${editingDraftId}` : '/api/drafts';
+  const method = editingDraftId ? 'PUT' : 'POST';
+  const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+  const data = await res.json();
+  closeModal('draftModal');
+  toast('✅ ' + data.message);
+  loadDrafts();
+}
+
+async function deleteDraft(id) {
+  if (!confirm('Delete this draft?')) return;
+  await fetch(`/api/drafts/${id}`, { method:'DELETE' });
+  toast('Draft deleted');
+  loadDrafts();
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+loadLibrary();
+loadDrafts();
+</script>
 </body>
 </html>

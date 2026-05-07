@@ -10,29 +10,32 @@ db = SQLAlchemy()
 login_manager = LoginManager()
 migrate = Migrate()
 
+
 def create_app():
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder='../static')
     app.config.from_object('app.config.Config')
-    
+
     db.init_app(app)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     migrate.init_app(app, db)
-    
+
     app.redis = redis.from_url(app.config['REDIS_URL'])
     app.task_queue = Queue('certificates', connection=app.redis)
-    
+
     from app.routes import auth, registration, certificates
     app.register_blueprint(auth.bp)
     app.register_blueprint(registration.bp)
     app.register_blueprint(certificates.bp)
-    
+
     with app.app_context():
         db.create_all()
-    
+
     return app
 
+
 from app.models import Admin
+
 
 @login_manager.user_loader
 def load_user(user_id):

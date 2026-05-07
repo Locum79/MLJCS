@@ -11,3 +11,4 @@ reportlab==4.0.8
 qrcode==7.4.2
 Pillow==10.1.0
 python-dotenv==1.0.0
+Werkzeug==3.0.1
