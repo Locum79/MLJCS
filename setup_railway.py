@@ -12,11 +12,18 @@ with app.app_context():
     admin_email = os.environ.get('ADMIN_EMAIL', 'admin@medicalocumjobs.com')
     admin_password = os.environ.get('ADMIN_PASSWORD', 'changeme123')
     
-    if not Admin.query.filter_by(email=admin_email).first():
+    existing = Admin.query.filter_by(email=admin_email).first()
+    if not existing:
         admin = Admin(email=admin_email)
         admin.set_password(admin_password)
         db.session.add(admin)
+        db.session.commit()  # FIX: was missing — admin never persisted
         print(f"Admin created: {admin_email}")
+    else:
+        # Always re-hash password in case env var changed
+        existing.set_password(admin_password)
+        db.session.commit()
+        print(f"Admin password updated: {admin_email}")
     
     if CertificateType.query.count() == 0:
         token = str(uuid.uuid4())[:8]
