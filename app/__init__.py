@@ -29,7 +29,7 @@ def create_app():
     app.register_blueprint(certificates.bp)
 
     with app.app_context():
-        db.create_all()
+        db.create_all(checkfirst=True)
 
     return app
 
