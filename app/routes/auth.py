@@ -6,15 +6,44 @@ import os
 
 bp = Blueprint('auth', __name__)
 
+HARDCODED_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+HARDCODED_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin').strip().lower()
+HARDCODED_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
+
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email', '').strip().lower()
+        identifier = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        admin = Admin.query.filter_by(email=email).first()
+
+        # Check hardcoded credentials first (username or email match)
+        is_hardcoded = (
+            identifier in (HARDCODED_USERNAME.lower(), HARDCODED_EMAIL.lower())
+            and password == HARDCODED_PASSWORD
+        )
+
+        if is_hardcoded:
+            # Find or create the hardcoded admin in DB for flask-login session
+            admin = Admin.query.filter_by(email=HARDCODED_EMAIL).first()
+            if not admin:
+                admin = Admin(email=HARDCODED_EMAIL)
+                admin.set_password(HARDCODED_PASSWORD)
+                db.session.add(admin)
+                db.session.commit()
+            login_user(admin)
+            return redirect(url_for('certificates.dashboard'))
+
+        # Fall through to DB lookup (for any other admins created via setup)
+        admin = Admin.query.filter(
+            db.or_(
+                Admin.email == identifier,
+                Admin.email == identifier.split('@')[0] if '@' not in identifier else identifier
+            )
+        ).first()
         if admin and admin.check_password(password):
             login_user(admin)
             return redirect(url_for('certificates.dashboard'))
+
         flash('Invalid credentials')
     return render_template('login.html')
 
@@ -26,20 +55,19 @@ def logout():
 
 @bp.route('/admin/setup', methods=['GET', 'POST'])
 def emergency_setup():
-    """Emergency route to create/reset admin when setup_railway.py wasn't run."""
     setup_key = os.environ.get('SETUP_KEY', '')
-    
+
     if request.method == 'POST':
         provided_key = request.form.get('setup_key', '')
         if not setup_key or provided_key != setup_key:
             return jsonify({'error': 'Invalid setup key'}), 403
-        
+
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
-        
+
         if not email or not password:
             return jsonify({'error': 'Email and password required'}), 400
-        
+
         admin = Admin.query.filter_by(email=email).first()
         if admin:
             admin.set_password(password)
@@ -51,8 +79,7 @@ def emergency_setup():
             db.session.add(admin)
             db.session.commit()
             return jsonify({'message': f'Admin created: {email}'})
-    
-    # GET — show simple form
+
     return '''
     <html><body style="font-family:sans-serif;max-width:400px;margin:60px auto;padding:20px">
     <h2>CertifyStack Setup</h2>
