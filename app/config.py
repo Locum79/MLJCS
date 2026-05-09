@@ -6,7 +6,7 @@ load_dotenv()
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
     
-    database_url = os.environ.get('DATABASE_URL', 'sqlite:///certifystack.db')
+    database_url = os.environ.get('DATABASE_URL', 'sqlite:///uploads/certifystack.db')
     if database_url and database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)
     SQLALCHEMY_DATABASE_URI = database_url
