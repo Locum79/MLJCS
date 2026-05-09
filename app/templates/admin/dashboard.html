@@ -2,199 +2,275 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>CertifyStack — Admin</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>CertifyStack</title>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
 <style>
-:root {
-  --green:#1a7a3c; --green-dark:#145e2e; --green-light:#e8f5ec;
-  --red:#e53935; --amber:#f59e0b; --blue:#1d6fa4;
-  --bg:#f4f6f8; --card:#fff; --border:#e0e0e0;
-  --text:#1a1a2e; --muted:#6b7280;
-  --radius:10px; --shadow:0 2px 12px rgba(0,0,0,.08);
+:root{
+  --g:#1a7a3c;--gd:#145e2e;--gl:#e8f5ec;--g2:#2e9e55;
+  --red:#dc2626;--amber:#d97706;--blue:#1d6fa4;--purple:#7c3aed;
+  --bg:#f0f2f5;--card:#fff;--border:#e5e7eb;--text:#111827;--muted:#6b7280;
+  --r:10px;--sh:0 1px 3px rgba(0,0,0,.08),0 1px 2px rgba(0,0,0,.06);
+  --sh2:0 4px 24px rgba(0,0,0,.12);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;font-size:14px}
 
-/* HEADER */
-.header{background:var(--green);color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
-.header h1{font-size:18px;font-weight:700;letter-spacing:.3px}
-.header-right{display:flex;gap:12px;align-items:center}
-.header a{color:rgba(255,255,255,.85);text-decoration:none;font-size:13px}
+/* LAYOUT */
+.app{display:flex;flex-direction:column;min-height:100vh}
+.topbar{background:var(--g);color:#fff;padding:0 20px;height:52px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.topbar-logo{font-size:17px;font-weight:800;letter-spacing:-.3px;display:flex;align-items:center;gap:8px}
+.topbar-right{display:flex;align-items:center;gap:16px}
+.topbar-right a{color:rgba(255,255,255,.8);text-decoration:none;font-size:12px}
+.topbar-right a:hover{color:#fff}
 
-/* TABS */
-.tabs{display:flex;background:#fff;border-bottom:2px solid var(--border);overflow-x:auto;-webkit-overflow-scrolling:touch}
-.tab-btn{padding:13px 20px;font-size:13px;font-weight:600;color:var(--muted);border:none;background:none;cursor:pointer;white-space:nowrap;border-bottom:3px solid transparent;margin-bottom:-2px}
-.tab-btn.active{color:var(--green);border-bottom-color:var(--green)}
+/* SIDEBAR + CONTENT (desktop) */
+.layout{display:flex;flex:1}
+.sidebar{width:210px;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:52px;height:calc(100vh - 52px);overflow-y:auto}
+.sidebar-section{padding:16px 12px 4px;font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.8px}
+.nav-btn{display:flex;align-items:center;gap:10px;padding:9px 14px;border:none;background:none;cursor:pointer;color:var(--muted);font-size:13px;font-weight:500;width:100%;text-align:left;border-radius:7px;margin:1px 0;transition:.15s}
+.nav-btn:hover{background:var(--gl);color:var(--g)}
+.nav-btn.active{background:var(--gl);color:var(--g);font-weight:700}
+.nav-btn .icon{font-size:16px;width:20px;text-align:center}
+.main{flex:1;padding:20px;overflow-x:hidden;min-width:0}
 
 /* PANELS */
-.panel{display:none;padding:16px}
-.panel.active{display:block}
+.panel{display:none}.panel.active{display:block}
 
 /* CARDS */
-.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:16px}
-.card-title{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:18px;margin-bottom:16px}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.card-title{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;margin-bottom:16px}
+.stat-card{background:var(--card);border-radius:var(--r);padding:14px;box-shadow:var(--sh);text-align:center}
+.stat-num{font-size:26px;font-weight:800;color:var(--g)}
+.stat-label{font-size:11px;color:var(--muted);margin-top:3px}
 
 /* LIBRARY GRID */
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.lib-card{background:var(--card);border:2px solid var(--border);border-radius:var(--radius);padding:14px;cursor:pointer;transition:.2s;position:relative;text-align:center}
-.lib-card:hover,.lib-card.selected{border-color:var(--green);background:var(--green-light)}
-.lib-card .lib-name{font-size:13px;font-weight:600;margin-top:8px}
-.lib-card .lib-period{font-size:11px;color:var(--muted);margin-top:3px}
-.lib-card .lib-count{font-size:11px;color:var(--green);margin-top:3px}
-.lib-card .lib-icon{font-size:32px}
-.lib-card .del-cert{position:absolute;top:6px;right:6px;background:none;border:none;color:#ccc;cursor:pointer;font-size:14px;line-height:1}
-.lib-card .del-cert:hover{color:var(--red)}
-.add-lib-card{border-style:dashed;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:110px}
-.add-lib-card:hover{border-color:var(--green);color:var(--green)}
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px}
+.lib-card{background:var(--card);border:2px solid var(--border);border-radius:var(--r);padding:16px 14px;cursor:pointer;transition:.2s;position:relative;text-align:center}
+.lib-card:hover,.lib-card.active{border-color:var(--g);background:var(--gl)}
+.lib-card .lc-icon{font-size:34px;margin-bottom:8px}
+.lib-card .lc-name{font-size:13px;font-weight:700;line-height:1.3}
+.lib-card .lc-period{font-size:11px;color:var(--muted);margin-top:3px}
+.lib-card .lc-meta{display:flex;justify-content:center;gap:8px;margin-top:6px}
+.lc-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;background:var(--gl);color:var(--g)}
+.lib-card .lc-del{position:absolute;top:7px;right:8px;background:none;border:none;color:#d1d5db;cursor:pointer;font-size:13px;line-height:1;padding:2px}
+.lib-card .lc-del:hover{color:var(--red)}
+.add-card{border-style:dashed;color:var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;gap:6px}
+.add-card:hover{border-color:var(--g);color:var(--g)}
 
 /* BUTTONS */
-.btn{display:inline-flex;align-items:center;gap:6px;padding:9px 16px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s}
-.btn-green{background:var(--green);color:#fff} .btn-green:hover{background:var(--green-dark)}
-.btn-outline{background:#fff;color:var(--green);border:1.5px solid var(--green)} .btn-outline:hover{background:var(--green-light)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 15px;border:none;border-radius:7px;font-size:13px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-g{background:var(--g);color:#fff}.btn-g:hover{background:var(--gd)}
+.btn-outline{background:#fff;color:var(--g);border:1.5px solid var(--g)}.btn-outline:hover{background:var(--gl)}
 .btn-red{background:var(--red);color:#fff}
 .btn-amber{background:var(--amber);color:#fff}
 .btn-blue{background:var(--blue);color:#fff}
-.btn-sm{padding:5px 10px;font-size:12px;border-radius:5px}
-.btn-xs{padding:3px 8px;font-size:11px;border-radius:4px}
+.btn-purple{background:var(--purple);color:#fff}
+.btn-ghost{background:transparent;color:var(--muted);border:1.5px solid var(--border)}.btn-ghost:hover{background:var(--bg)}
+.btn-sm{padding:5px 11px;font-size:12px;border-radius:6px}
+.btn-xs{padding:3px 8px;font-size:11px;border-radius:5px}
 
 /* ACTION BAR */
-.action-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+.action-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;align-items:center}
 .action-bar .spacer{flex:1}
 
 /* TABLE */
-.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:0 0 var(--r) var(--r)}
 table.dataTable{font-size:12px;width:100%!important}
-table.dataTable thead th{background:var(--green-light);color:var(--green-dark);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;padding:10px 8px}
-table.dataTable tbody tr:hover{background:var(--green-light)}
-table.dataTable tbody td{padding:9px 8px;vertical-align:middle}
-.status-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase}
-.status-registered{background:#fef3c7;color:#92400e}
-.status-approved{background:#d1fae5;color:#065f46}
-.status-sending{background:#dbeafe;color:#1e40af}
-.status-sent{background:#d1fae5;color:#065f46}
-.status-rejected{background:#fee2e2;color:#991b1b}
-.qr-toggle{cursor:pointer;font-size:18px;user-select:none;transition:.15s}
-.qr-toggle:hover{transform:scale(1.2)}
+table.dataTable thead th{background:var(--gl);color:var(--gd);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:9px 8px;white-space:nowrap}
+table.dataTable tbody tr:hover td{background:#f9fafb}
+table.dataTable tbody td{padding:8px;vertical-align:middle;border-bottom:1px solid #f3f4f6}
+.status-badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+.s-registered{background:#fef3c7;color:#92400e}
+.s-approved{background:#d1fae5;color:#065f46}
+.s-sending{background:#dbeafe;color:#1e40af}
+.s-sent{background:#d1fae5;color:#065f46}
+.s-rejected{background:#fee2e2;color:#991b1b}
+.s-archived{background:#f3f4f6;color:#6b7280}
+.qr-toggle{cursor:pointer;font-size:17px;user-select:none;transition:.15s}
+.qr-toggle:hover{transform:scale(1.25)}
+code.cert-id{font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:4px;font-family:monospace}
 
 /* FORMS */
-.form-group{margin-bottom:14px}
-.form-group label{display:block;font-size:12px;font-weight:600;margin-bottom:5px;color:var(--muted)}
-.form-group input,.form-group select,.form-group textarea{width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;outline:none;transition:.15s;font-family:inherit}
-.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--green)}
-.form-group textarea{min-height:130px;resize:vertical}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-group{margin-bottom:12px}
+.form-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;outline:none;transition:.15s;font-family:inherit;background:#fff}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(26,122,60,.1)}
+.form-group textarea{min-height:120px;resize:vertical}
+.field-hint{font-size:11px;color:var(--muted);margin-top:4px}
+.tpl-vars{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.tpl-var{font-size:10px;background:#f3f4f6;padding:3px 7px;border-radius:4px;cursor:pointer;font-family:monospace;color:var(--blue)}
+.tpl-var:hover{background:var(--gl);color:var(--g)}
 
-/* DRAFT CARDS */
-.draft-card{border:1.5px solid var(--border);border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer;transition:.15s}
-.draft-card:hover,.draft-card.selected{border-color:var(--green);background:var(--green-light)}
-.draft-subject{font-size:13px;font-weight:600}
-.draft-preview{font-size:11px;color:var(--muted);margin-top:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.draft-meta{font-size:10px;color:var(--muted);margin-top:5px}
-.template-vars{font-size:11px;color:var(--muted);background:#f8f8f8;border-radius:6px;padding:8px 10px;margin-top:8px}
-.template-vars code{background:#e8e8e8;padding:1px 5px;border-radius:3px;font-size:10px}
+/* DROP ZONE */
+.drop-zone{border:2px dashed var(--border);border-radius:var(--r);padding:28px;text-align:center;color:var(--muted);cursor:pointer;transition:.2s}
+.drop-zone:hover,.drop-zone.over{border-color:var(--g);background:var(--gl);color:var(--g)}
+.drop-zone input{display:none}
+.drop-zone .dz-icon{font-size:28px;margin-bottom:6px}
+.drop-zone .dz-label{font-size:13px;font-weight:500}
+.drop-zone .dz-sub{font-size:11px;margin-top:4px;opacity:.7}
 
 /* MODAL */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;align-items:center;justify-content:center;padding:16px}
-.modal-overlay.open{display:flex}
-.modal{background:#fff;border-radius:var(--radius);padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;position:relative}
-.modal h2{font-size:16px;font-weight:700;margin-bottom:16px}
-.modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted)}
+.overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;padding:16px}
+.overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;position:relative;box-shadow:var(--sh2)}
+.modal-lg{max-width:700px}
+.modal h2{font-size:16px;font-weight:800;margin-bottom:16px;padding-right:28px}
+.modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);line-height:1}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;padding-top:14px;border-top:1px solid var(--border)}
+
+/* CONFIRMATION BOX */
+.confirm-box{background:#fff7ed;border:1.5px solid #fed7aa;border-radius:8px;padding:14px 16px;margin-bottom:14px}
+.confirm-box .cb-title{font-weight:700;color:#c2410c;font-size:13px;margin-bottom:8px}
+.confirm-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid #fed7aa}
+.confirm-row:last-child{border-bottom:none}
+
+/* FIELD MAPPER */
+.mapper-wrap{position:relative;overflow:hidden;background:#f3f4f6;border-radius:8px;margin-bottom:14px}
+.mapper-wrap iframe{width:100%;height:420px;border:none;display:block}
+.field-list{display:flex;flex-direction:column;gap:8px}
+.field-row{display:grid;grid-template-columns:80px 1fr 1fr 1fr 1fr;gap:6px;align-items:center;font-size:12px}
+.field-row input[type=number]{padding:5px 7px;border:1.5px solid var(--border);border-radius:5px;width:100%;font-size:12px}
+.field-label{font-weight:700;color:var(--muted);font-size:11px}
+
+/* DRAFT CARDS */
+.draft-list{display:flex;flex-direction:column;gap:8px}
+.draft-card{border:1.5px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;transition:.15s;display:flex;gap:10px;align-items:flex-start}
+.draft-card:hover,.draft-card.active{border-color:var(--g);background:var(--gl)}
+.draft-card .dc-body{flex:1;min-width:0}
+.draft-card .dc-name{font-weight:700;font-size:13px}
+.draft-card .dc-subj{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.draft-card .dc-mode{font-size:10px;padding:2px 6px;border-radius:20px;font-weight:700}
+.mode-a{background:#dbeafe;color:#1e40af}
+.mode-b{background:#f3e8ff;color:#6d28d9}
+.draft-actions{display:flex;gap:5px;flex-shrink:0}
+
+/* REG LINK */
+.reg-link-box{background:var(--gl);border:1px solid #bbf7d0;border-radius:7px;padding:9px 12px;display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px}
+.reg-link-box a{color:var(--g);font-weight:600;word-break:break-all;flex:1}
 
 /* TOAST */
-#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1a2e;color:#fff;padding:11px 22px;border-radius:25px;font-size:13px;z-index:999;opacity:0;transition:.3s;pointer-events:none}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 20px;border-radius:25px;font-size:13px;z-index:999;opacity:0;transition:.3s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
 
-/* FILE UPLOAD DROP */
-.drop-zone{border:2px dashed var(--border);border-radius:var(--radius);padding:30px;text-align:center;color:var(--muted);cursor:pointer;transition:.2s}
-.drop-zone:hover,.drop-zone.dragover{border-color:var(--green);background:var(--green-light);color:var(--green)}
-.drop-zone input{display:none}
+/* PROGRESS BAR */
+.progress-bar{height:5px;background:#e5e7eb;border-radius:3px;overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;background:var(--g);transition:width .4s}
 
-/* REGISTER LINK */
-.reg-link{font-size:11px;color:var(--blue);word-break:break-all}
+/* CAMPAIGN BADGE */
+.camp-status{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+.camp-draft{background:#f3f4f6;color:#6b7280}
+.camp-sent{background:#d1fae5;color:#065f46}
+.camp-scheduled{background:#dbeafe;color:#1e40af}
 
 /* RESPONSIVE */
-@media(max-width:600px){
-  .header h1{font-size:15px}
-  .panel{padding:12px}
-  .btn{padding:8px 12px;font-size:12px}
+@media(max-width:768px){
+  .sidebar{display:none}
+  .main{padding:12px}
+  .lib-grid{grid-template-columns:repeat(2,1fr)}
+  .form-grid{grid-template-columns:1fr}
+  .stat-grid{grid-template-columns:repeat(3,1fr)}
+  .topbar-logo span.sub{display:none}
 }
 </style>
 </head>
 <body>
+<div class="app">
 
-<div class="header">
-  <h1>🏅 CertifyStack</h1>
-  <div class="header-right">
-    <span id="selectedCertName" style="font-size:12px;opacity:.8"></span>
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-logo">🏅 <span>CertifyStack</span>
+    <span class="sub" style="font-size:11px;opacity:.6;font-weight:400">by MLJ</span>
+  </div>
+  <div class="topbar-right">
+    <span id="activeCertBadge" style="background:rgba(255,255,255,.15);padding:3px 10px;border-radius:20px;font-size:11px;display:none"></span>
     <a href="{{ url_for('auth.logout') }}">Logout</a>
   </div>
 </div>
 
-<!-- TABS -->
-<div class="tabs">
-  <button class="tab-btn active" onclick="switchTab('library')">📚 Library</button>
-  <button class="tab-btn" onclick="switchTab('participants')">👥 Participants</button>
-  <button class="tab-btn" onclick="switchTab('messages')">✉️ Messages</button>
-</div>
+<div class="layout">
+<!-- SIDEBAR -->
+<nav class="sidebar">
+  <div class="sidebar-section">Issuance</div>
+  <button class="nav-btn active" onclick="nav('library')" id="nav-library"><span class="icon">📚</span>Library</button>
+  <button class="nav-btn" onclick="nav('participants')" id="nav-participants"><span class="icon">👥</span>Participants</button>
+  <div class="sidebar-section">Communication</div>
+  <button class="nav-btn" onclick="nav('messages')" id="nav-messages"><span class="icon">✉️</span>Messages</button>
+  <button class="nav-btn" onclick="nav('campaigns')" id="nav-campaigns"><span class="icon">📢</span>Campaigns</button>
+  <div class="sidebar-section">System</div>
+  <button class="nav-btn" onclick="nav('audit')" id="nav-audit"><span class="icon">📋</span>Audit Log</button>
+  <button class="nav-btn" onclick="nav('settings')" id="nav-settings"><span class="icon">⚙️</span>Settings</button>
+</nav>
 
-<!-- ═══════════════ TAB: LIBRARY ═══════════════ -->
-<div id="tab-library" class="panel active">
+<!-- MAIN CONTENT -->
+<main class="main">
+
+<!-- ═══════ LIBRARY ═══════ -->
+<div class="panel active" id="panel-library">
   <div class="card">
-    <div class="card-title">📚 Certificate Library
-      <button class="btn btn-green btn-sm" onclick="openModal('addCertModal')" style="margin-left:auto">+ Add Certificate</button>
+    <div class="card-header">
+      <div class="card-title">📚 Certificate Library</div>
+      <button class="btn btn-g btn-sm" onclick="openModal('addCertModal')">+ Add Certificate</button>
     </div>
-    <div class="lib-grid" id="libGrid">
-      <div class="lib-card add-lib-card" onclick="openModal('addCertModal')">
-        <span style="font-size:28px">＋</span>
-        <span style="font-size:12px;margin-top:6px">Add Master</span>
-      </div>
-    </div>
+    <div class="lib-grid" id="libGrid"></div>
   </div>
 </div>
 
-<!-- ═══════════════ TAB: PARTICIPANTS ═══════════════ -->
-<div id="tab-participants" class="panel">
-
-  <div class="card" id="noSelectionMsg">
-    <p style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0">← Select a certificate from the Library tab to manage participants</p>
+<!-- ═══════ PARTICIPANTS ═══════ -->
+<div class="panel" id="panel-participants">
+  <div id="noSelMsg" class="card" style="text-align:center;padding:40px;color:var(--muted)">
+    ← Select a certificate from the Library to manage participants
   </div>
-
   <div id="participantsContent" style="display:none">
     <div class="card" style="padding:12px 16px">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span id="activeLibName" style="font-weight:700;font-size:14px"></span>
-        <span id="activeLibPeriod" style="font-size:12px;color:var(--muted)"></span>
-        <span class="spacer"></span>
-        <button class="btn btn-outline btn-sm" onclick="openModal('addParticipantModal')">+ Add Participant</button>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:800;font-size:15px" id="pTitle"></div>
+          <div style="font-size:12px;color:var(--muted)" id="pPeriod"></div>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-outline btn-sm" onclick="openModal('importModal')">⬆ Import CSV/XLSX</button>
+        <button class="btn btn-g btn-sm" onclick="openModal('addParticipantModal')">+ Add</button>
       </div>
-      <div style="margin-top:8px">
-        <a id="regLinkDisplay" class="reg-link" href="#" target="_blank"></a>
+      <div class="reg-link-box">
+        <span>🔗 Registration link:</span>
+        <a id="regLink" href="#" target="_blank">—</a>
+        <button class="btn btn-xs btn-ghost" onclick="copyRegLink()">Copy</button>
       </div>
     </div>
 
-    <div class="action-bar">
-      <button class="btn btn-green btn-sm" onclick="batchAction('approve')">✓ Approve</button>
-      <button class="btn btn-red btn-sm" onclick="batchAction('reject')">✗ Reject</button>
-      <button class="btn btn-blue btn-sm" onclick="openSendModal(false)">📧 Send Selected</button>
-      <button class="btn btn-amber btn-sm" onclick="openSendModal(true)">📧 Send ALL Approved</button>
-      <button class="btn btn-sm" style="background:#607d8b;color:#fff" onclick="batchAction('delete')">🗑 Delete</button>
-    </div>
+    <!-- Stats row -->
+    <div class="stat-grid" id="pStats"></div>
 
-    <div class="card" style="padding:0">
-      <div class="table-wrap">
+    <div class="card" style="padding:0;overflow:hidden">
+      <div class="action-bar" style="padding:12px 14px 0">
+        <button class="btn btn-g btn-sm" onclick="batchApprove()">✓ Approve</button>
+        <button class="btn btn-red btn-sm" onclick="batchReject()">✗ Reject</button>
+        <button class="btn btn-blue btn-sm" onclick="initSend(false)">📧 Send Selected</button>
+        <button class="btn btn-amber btn-sm" onclick="initSend(true)">📧 Send ALL Approved</button>
+        <button class="btn btn-ghost btn-sm" onclick="batchArchive()">📦 Archive</button>
+        <button class="btn btn-sm" style="background:#607d8b;color:#fff" onclick="batchDelete()">🗑 Delete</button>
+        <div class="spacer"></div>
+        <select id="statusFilter" onchange="loadUsers()" style="padding:5px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+          <option value="">All statuses</option>
+          <option value="registered">Registered</option>
+          <option value="approved">Approved</option>
+          <option value="sent">Sent</option>
+          <option value="rejected">Rejected</option>
+          <option value="archived">Archived</option>
+        </select>
+      </div>
+      <div class="tbl-wrap" style="padding:0 0 8px">
         <table id="usersTable" class="display" style="width:100%">
-          <thead>
-            <tr>
-              <th style="width:32px"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Cert ID</th>
-              <th>QR</th>
-              <th>Status</th>
-              <th>Date</th>
-              <th></th>
-            </tr>
-          </thead>
+          <thead><tr>
+            <th style="width:32px"><input type="checkbox" id="selAll" onchange="toggleAll()"></th>
+            <th>Name</th><th>Email</th><th>Cert ID</th>
+            <th>QR</th><th>Status</th><th>Score</th><th>Registered</th><th></th>
+          </tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -202,436 +278,871 @@ table.dataTable tbody td{padding:9px 8px;vertical-align:middle}
   </div>
 </div>
 
-<!-- ═══════════════ TAB: MESSAGES ═══════════════ -->
-<div id="tab-messages" class="panel">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-
-    <div class="card">
-      <div class="card-title">✉️ Email Drafts
-        <button class="btn btn-green btn-sm" onclick="openModal('draftModal');editingDraftId=null;clearDraftForm()" style="margin-left:auto">+ New Draft</button>
-      </div>
-      <div id="draftsList"></div>
-    </div>
-
-    <div class="card">
-      <div class="card-title">🔤 Template Variables</div>
-      <div class="template-vars">
-        Use these in subject and body:<br><br>
-        <code>{first_name}</code> — recipient's first name<br>
-        <code>{full_name}</code> — full name as on certificate<br>
-        <code>{cert_name}</code> — certificate course name<br>
-        <code>{cert_id}</code> — unique certificate ID<br>
-        <code>{issued_date}</code> — date certificate was sent<br><br>
-        <strong>Example body:</strong><br>
-        <em>Dear {first_name}, Congratulations on completing {cert_name}! Your certificate ID is {cert_id}.</em>
+<!-- ═══════ MESSAGES ═══════ -->
+<div class="panel" id="panel-messages">
+  <div style="display:grid;grid-template-columns:1fr 340px;gap:16px">
+    <div>
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">✉️ Email Drafts</div>
+          <button class="btn btn-g btn-sm" onclick="newDraft()">+ New Draft</button>
+        </div>
+        <div class="draft-list" id="draftList"></div>
       </div>
     </div>
-
-  </div>
-</div>
-
-
-<!-- ════════ MODALS ════════ -->
-
-<!-- Add Certificate Modal -->
-<div class="modal-overlay" id="addCertModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('addCertModal')">✕</button>
-    <h2>Add Master Certificate</h2>
-    <div class="form-group">
-      <label>Certificate Name</label>
-      <input id="newCertName" type="text" placeholder="e.g. Manual Handling Training">
-    </div>
-    <div class="form-group">
-      <label>Period / Cohort</label>
-      <input id="newCertPeriod" type="text" placeholder="e.g. March 2026">
-    </div>
-    <div class="form-group">
-      <label>Master File (PDF or high-res PNG)</label>
-      <div class="drop-zone" id="dropZone" onclick="document.getElementById('masterFileInput').click()">
-        <div id="dropLabel">📄 Click or drag & drop master certificate</div>
-        <input type="file" id="masterFileInput" accept=".pdf,.png" onchange="handleFileSelect(this)">
+    <div>
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">🔤 Template Variables</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">Click to copy:</div>
+        <div class="tpl-vars" id="tplVarList"></div>
+        <div style="margin-top:12px;font-size:11px;color:var(--muted);line-height:1.7">
+          <strong>Mode A</strong> — Cert dispatch (with PDF attachment)<br>
+          <strong>Mode B</strong> — Campaign (no attachment, has unsubscribe)
+        </div>
       </div>
-    </div>
-    <div class="form-group">
-      <label>Default Email Message (optional — uses template if blank)</label>
-      <textarea id="newCertEmail" placeholder="Dear {first_name}, Congratulations on completing {cert_name}..."></textarea>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('addCertModal')">Cancel</button>
-      <button class="btn btn-green" onclick="uploadCertType()">Upload & Create</button>
     </div>
   </div>
 </div>
 
-<!-- Add Participant Modal -->
-<div class="modal-overlay" id="addParticipantModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('addParticipantModal')">✕</button>
-    <h2>Add Participant</h2>
-    <div class="form-group"><label>First Name</label><input id="pFirstName" type="text"></div>
-    <div class="form-group"><label>Surname</label><input id="pSurname" type="text"></div>
-    <div class="form-group"><label>Other Name (optional)</label><input id="pOtherName" type="text"></div>
-    <div class="form-group"><label>Email</label><input id="pEmail" type="email"></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('addParticipantModal')">Cancel</button>
-      <button class="btn btn-green" onclick="addParticipant()">Add</button>
+<!-- ═══════ CAMPAIGNS ═══════ -->
+<div class="panel" id="panel-campaigns">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">📢 Campaigns</div>
+      <button class="btn btn-g btn-sm" onclick="openModal('campaignModal')">+ New Campaign</button>
+    </div>
+    <div id="campaignList"></div>
+  </div>
+</div>
+
+<!-- ═══════ AUDIT ═══════ -->
+<div class="panel" id="panel-audit">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">📋 Audit Log</div>
+    <div class="tbl-wrap">
+      <table id="auditTable" class="display" style="width:100%">
+        <thead><tr><th>Action</th><th>By</th><th>Details</th><th>Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
     </div>
   </div>
 </div>
 
-<!-- Send Modal -->
-<div class="modal-overlay" id="sendModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('sendModal')">✕</button>
-    <h2 id="sendModalTitle">Send Certificates</h2>
-    <p id="sendModalDesc" style="font-size:13px;color:var(--muted);margin-bottom:16px"></p>
+<!-- ═══════ SETTINGS ═══════ -->
+<div class="panel" id="panel-settings">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:16px">⚙️ Organisation & Sender Identity</div>
+    <div class="form-grid">
+      <div class="form-group"><label>Organisation Name</label><input id="sOrgName" placeholder="Medical Locum Jobs"></div>
+      <div class="form-group"><label>Sender Display Name</label><input id="sSenderName" placeholder="Medical Locum Jobs Academy"></div>
+      <div class="form-group"><label>Sender Email (From)</label><input id="sSenderEmail" type="email" placeholder="certificates@domain.com"></div>
+      <div class="form-group"><label>Reply-To Email</label><input id="sReplyTo" type="email" placeholder="support@domain.com"></div>
+    </div>
+    <div class="form-group"><label>Verification Base URL</label><input id="sVerifyUrl" placeholder="https://yourapp.railway.app"><div class="field-hint">Used to build QR verification links: {base_url}/verify/{cert_id}</div></div>
+    <button class="btn btn-g" onclick="saveSettings()">Save Settings</button>
+  </div>
+</div>
+
+</main><!-- /main -->
+</div><!-- /layout -->
+</div><!-- /app -->
+
+<!-- ════════════════════════ MODALS ════════════════════════ -->
+
+<!-- ADD CERTIFICATE -->
+<div class="overlay" id="addCertModal">
+<div class="modal">
+  <button class="modal-close" onclick="closeModal('addCertModal')">✕</button>
+  <h2>Add Master Certificate</h2>
+  <div class="form-grid">
+    <div class="form-group"><label>Certificate Name</label><input id="acName" placeholder="Manual Handling Training"></div>
+    <div class="form-group"><label>Course Code</label><input id="acCode" placeholder="MH" maxlength="6" style="text-transform:uppercase"></div>
+  </div>
+  <div class="form-group"><label>Period / Cohort</label><input id="acPeriod" placeholder="March 2026"></div>
+  <div class="form-group">
+    <label>Master File <span style="color:var(--muted);font-weight:400">(PDF or high-res PNG)</span></label>
+    <div class="drop-zone" id="dzCert" onclick="document.getElementById('acFile').click()">
+      <div class="dz-icon">📄</div>
+      <div class="dz-label" id="dzLabel">Click or drag & drop master certificate</div>
+      <div class="dz-sub">PDF or PNG — original quality preserved</div>
+      <input type="file" id="acFile" accept=".pdf,.png" onchange="onFileSelect(this)">
+    </div>
+  </div>
+  <div class="form-group"><label>Default Email Subject <span style="color:var(--muted);font-weight:400">(optional)</span></label><input id="acSubject" placeholder="Your {{course_name}} Certificate — {{organization_name}}"></div>
+  <div class="form-group"><label>Default Email Message <span style="color:var(--muted);font-weight:400">(optional)</span></label><textarea id="acEmail" placeholder="Dear {{first_name}}, Congratulations...&#10;&#10;Leave blank to use default template."></textarea></div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('addCertModal')">Cancel</button>
+    <button class="btn btn-g" onclick="uploadCert()">Upload & Add to Library</button>
+  </div>
+</div>
+</div>
+
+<!-- FIELD MAPPER -->
+<div class="overlay" id="mapperModal">
+<div class="modal modal-lg">
+  <button class="modal-close" onclick="closeModal('mapperModal')">✕</button>
+  <h2>📐 Field Placement</h2>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:14px">
+    Set where each field appears on the certificate. X/Y are coordinates from bottom-left (PDF units). W = field width.
+  </p>
+  <div class="field-list" id="fieldList"></div>
+  <div style="margin-top:12px;margin-bottom:14px">
+    <button class="btn btn-outline btn-sm" onclick="runPreview()">👁 Live Preview</button>
+    <span style="font-size:11px;color:var(--muted);margin-left:10px">Opens generated certificate PDF in new tab</span>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('mapperModal')">Cancel</button>
+    <button class="btn btn-g" onclick="saveMapping()">Save Field Positions</button>
+  </div>
+</div>
+</div>
+
+<!-- ADD PARTICIPANT -->
+<div class="overlay" id="addParticipantModal">
+<div class="modal">
+  <button class="modal-close" onclick="closeModal('addParticipantModal')">✕</button>
+  <h2>Add Participant</h2>
+  <div class="form-grid">
+    <div class="form-group"><label>First Name</label><input id="pFn"></div>
+    <div class="form-group"><label>Surname</label><input id="pSn"></div>
+  </div>
+  <div class="form-group"><label>Other Name <span style="font-weight:400">(optional)</span></label><input id="pOn"></div>
+  <div class="form-group"><label>Email</label><input id="pEm" type="email"></div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('addParticipantModal')">Cancel</button>
+    <button class="btn btn-g" onclick="addParticipant()">Add Participant</button>
+  </div>
+</div>
+</div>
+
+<!-- IMPORT CSV/XLSX -->
+<div class="overlay" id="importModal">
+<div class="modal">
+  <button class="modal-close" onclick="closeModal('importModal')">✕</button>
+  <h2>⬆ Import Participants</h2>
+  <p style="font-size:12px;color:var(--muted);margin-bottom:14px">CSV or XLSX. Required columns: <code>email</code>, <code>first_name</code>, <code>surname</code>. Optional: <code>score</code>, <code>completion_status</code>.</p>
+  <div class="drop-zone" id="dzImport" onclick="document.getElementById('importFile').click()">
+    <div class="dz-icon">📊</div>
+    <div class="dz-label" id="dzImportLabel">Click or drag CSV / XLSX here</div>
+    <input type="file" id="importFile" accept=".csv,.xlsx,.xls" onchange="onImportSelect(this)">
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('importModal')">Cancel</button>
+    <button class="btn btn-g" onclick="importParticipants()">Import</button>
+  </div>
+</div>
+</div>
+
+<!-- SEND — DRAFT PICKER + CONFIRMATION -->
+<div class="overlay" id="sendModal">
+<div class="modal">
+  <button class="modal-close" onclick="closeModal('sendModal')">✕</button>
+  <h2 id="sendTitle">Send Certificates</h2>
+
+  <!-- Step 1: draft picker -->
+  <div id="sendStep1">
     <div class="form-group">
-      <label>Email Message (optional — select draft or use default)</label>
-      <select id="sendDraftSelect" style="width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px">
+      <label>Select Email Template</label>
+      <select id="sendDraftSel" style="width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:13px" onchange="onDraftSelect()">
         <option value="">— Use default template —</option>
       </select>
     </div>
-    <div id="draftPreview" style="display:none;margin-top:8px">
-      <div class="form-group"><label>Subject Preview</label><input id="previewSubject" type="text" readonly style="background:#f9f9f9"></div>
-      <div class="form-group"><label>Body Preview</label><textarea id="previewBody" readonly style="background:#f9f9f9;min-height:100px"></textarea></div>
+    <div id="draftPreview" style="display:none">
+      <div class="form-group"><label>Subject Preview</label><input id="previewSubj" readonly style="background:#f9fafb"></div>
+      <div class="form-group"><label>Body Preview</label><textarea id="previewBody" readonly style="background:#f9fafb;min-height:80px"></textarea></div>
     </div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('sendModal')">Cancel</button>
-      <button class="btn btn-green" onclick="confirmSend()">📧 Send Now</button>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('sendModal')">Cancel</button>
+      <button class="btn btn-g" onclick="requestConfirmation()">Continue →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: confirmation -->
+  <div id="sendStep2" style="display:none">
+    <div class="confirm-box">
+      <div class="cb-title">⚠ Please review before sending</div>
+      <div class="confirm-row"><span>Recipients</span><strong id="cfCount">—</strong></div>
+      <div class="confirm-row"><span>Course</span><strong id="cfCourse">—</strong></div>
+      <div class="confirm-row"><span>Sender</span><strong id="cfSender">—</strong></div>
+      <div class="confirm-row"><span>Certificates</span><strong id="cfCerts">—</strong></div>
+    </div>
+    <p style="font-size:12px;color:var(--muted)">This action will generate and dispatch personalised certificates. It cannot be undone.</p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="showStep(1)">← Back</button>
+      <button class="btn btn-g" onclick="confirmSend()">📧 Confirm & Send</button>
     </div>
   </div>
 </div>
+</div>
 
-<!-- Draft Edit Modal -->
-<div class="modal-overlay" id="draftModal">
-  <div class="modal">
-    <button class="modal-close" onclick="closeModal('draftModal')">✕</button>
-    <h2 id="draftModalTitle">New Draft</h2>
-    <div class="form-group"><label>Subject</label><input id="draftSubject" type="text" placeholder="Your {cert_name} Certificate — MLJ"></div>
-    <div class="form-group"><label>Body</label><textarea id="draftBody" placeholder="Dear {first_name},&#10;&#10;Congratulations..."></textarea></div>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-outline" onclick="closeModal('draftModal')">Cancel</button>
-      <button class="btn btn-green" onclick="saveDraft()">Save Draft</button>
+<!-- DRAFT EDITOR -->
+<div class="overlay" id="draftModal">
+<div class="modal modal-lg">
+  <button class="modal-close" onclick="closeModal('draftModal')">✕</button>
+  <h2 id="draftModalTitle">New Draft</h2>
+  <div class="form-grid">
+    <div class="form-group"><label>Draft Name</label><input id="dName" placeholder="Q1 2026 Dispatch"></div>
+    <div class="form-group"><label>Mode</label>
+      <select id="dMode">
+        <option value="1">Mode A — Certificate dispatch (with attachment)</option>
+        <option value="0">Mode B — Campaign (no attachment)</option>
+      </select>
     </div>
   </div>
+  <div class="form-group"><label>Subject</label><input id="dSubj" placeholder="Your {{course_name}} Certificate — {{organization_name}}"></div>
+  <div class="form-group"><label>Body</label><textarea id="dBody" style="min-height:180px" placeholder="Dear {{first_name}},&#10;&#10;Congratulations on completing {{course_name}}!..."></textarea></div>
+  <div class="tpl-vars" id="draftTplVars"></div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('draftModal')">Cancel</button>
+    <button class="btn btn-g" onclick="saveDraft()">Save Draft</button>
+  </div>
+</div>
+</div>
+
+<!-- CAMPAIGN MODAL -->
+<div class="overlay" id="campaignModal">
+<div class="modal">
+  <button class="modal-close" onclick="closeModal('campaignModal')">✕</button>
+  <h2>New Campaign</h2>
+  <div class="form-group"><label>Campaign Name</label><input id="campName" placeholder="March 2026 Newsletter"></div>
+  <div class="form-group"><label>Certificate Group</label>
+    <select id="campCertType" style="width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:13px"></select>
+  </div>
+  <div class="form-group"><label>Email Template</label>
+    <select id="campDraft" style="width:100%;padding:8px 11px;border:1.5px solid var(--border);border-radius:7px;font-size:13px"></select>
+  </div>
+  <div class="form-group" style="display:flex;align-items:center;gap:10px">
+    <input type="checkbox" id="campSendNow" style="width:auto">
+    <label for="campSendNow" style="font-size:13px;font-weight:500;text-transform:none;letter-spacing:0">Send immediately after creating</label>
+  </div>
+  <div class="modal-footer">
+    <button class="btn btn-ghost" onclick="closeModal('campaignModal')">Cancel</button>
+    <button class="btn btn-g" onclick="createCampaign()">Create Campaign</button>
+  </div>
+</div>
 </div>
 
 <div id="toast"></div>
 
+<!-- ════════════════════════ SCRIPTS ════════════════════════ -->
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script>
-let table, activeCertTypeId = null, sendAllMode = false, editingDraftId = null;
-let certTypes = [], drafts = [];
+// ── STATE ──────────────────────────────────────────────────────────────────
+let activeCT = null;        // active cert type object
+let dtUsers = null;         // DataTable instance
+let drafts = [];
+let certTypes = [];
+let sendAllMode = false;
+let confirmData = null;
+let editingDraftId = null;
+let editingCTId = null;     // cert type being mapped
 
-// ── TABS ─────────────────────────────────────────────────────────────────────
-function switchTab(name) {
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
-  if (name === 'messages') loadDrafts();
+const TPL_VARS = [
+  '{{full_name}}','{{first_name}}','{{certificate_id}}',
+  '{{course_name}}','{{issue_date}}','{{organization_name}}','{{verification_link}}'
+];
+
+// ── UTILS ──────────────────────────────────────────────────────────────────
+function toast(msg, dur=3200){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), dur);
+}
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.overlay').forEach(o=>
+  o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
+
+async function api(url,opts={}){
+  const res=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});
+  return res.json();
 }
 
-// ── MODALS ───────────────────────────────────────────────────────────────────
-function openModal(id) { document.getElementById(id).classList.add('open'); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
-document.querySelectorAll('.modal-overlay').forEach(m => m.addEventListener('click', e => { if(e.target===m) m.classList.remove('open'); }));
-
-// ── TOAST ────────────────────────────────────────────────────────────────────
-function toast(msg, dur=3000) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), dur);
+// ── NAVIGATION ─────────────────────────────────────────────────────────────
+function nav(name){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  document.getElementById('nav-'+name).classList.add('active');
+  if(name==='messages') loadDrafts();
+  if(name==='audit') loadAudit();
+  if(name==='settings') loadSettings();
+  if(name==='campaigns'){loadCampaigns();populateCampaignDropdowns()}
 }
 
-// ── LIBRARY ──────────────────────────────────────────────────────────────────
-async function loadLibrary() {
-  const res = await fetch('/api/cert-types');
-  certTypes = await res.json();
+// ── LIBRARY ────────────────────────────────────────────────────────────────
+async function loadLibrary(){
+  const res=await fetch('/api/cert-types');
+  certTypes=await res.json();
   renderLibrary();
 }
 
-function renderLibrary() {
-  const grid = document.getElementById('libGrid');
-  grid.innerHTML = '';
-  certTypes.forEach(ct => {
-    const card = document.createElement('div');
-    card.className = 'lib-card' + (ct.id === activeCertTypeId ? ' selected' : '');
-    card.innerHTML = `
-      <button class="del-cert" onclick="deleteCertType(event,${ct.id})">✕</button>
-      <div class="lib-icon">${ct.master_file_type==='png'?'🖼️':'📄'}</div>
-      <div class="lib-name">${ct.name}</div>
-      <div class="lib-period">${ct.period}</div>
-      <div class="lib-count">${ct.user_count} participants</div>`;
-    card.addEventListener('click', () => selectCertType(ct));
-    grid.appendChild(card);
+function renderLibrary(){
+  const g=document.getElementById('libGrid');
+  g.innerHTML='';
+  certTypes.forEach(ct=>{
+    const d=document.createElement('div');
+    d.className='lib-card'+(activeCT&&activeCT.id===ct.id?' active':'');
+    d.innerHTML=`
+      <button class="lc-del" onclick="delCT(event,${ct.id})" title="Remove">✕</button>
+      <div class="lc-icon">${ct.master_file_type==='png'?'🖼️':'📄'}</div>
+      <div class="lc-name">${ct.name}</div>
+      <div class="lc-period">${ct.period}</div>
+      <div class="lc-meta">
+        <span class="lc-badge">${ct.course_code}</span>
+        <span class="lc-badge">${ct.user_count} pax</span>
+      </div>
+      <div style="display:flex;justify-content:center;gap:6px;margin-top:10px">
+        <button class="btn btn-xs btn-outline" onclick="openMapper(event,${ct.id})">📐 Fields</button>
+        <button class="btn btn-xs btn-outline" onclick="runPreviewFor(event,${ct.id})">👁 Preview</button>
+      </div>`;
+    d.addEventListener('click',()=>selectCT(ct));
+    g.appendChild(d);
   });
-  // Add button
-  const add = document.createElement('div');
-  add.className = 'lib-card add-lib-card';
-  add.innerHTML = '<span style="font-size:28px">＋</span><span style="font-size:12px;margin-top:6px">Add Master</span>';
-  add.onclick = () => openModal('addCertModal');
-  grid.appendChild(add);
+  const add=document.createElement('div');
+  add.className='lib-card add-card';
+  add.innerHTML='<div style="font-size:28px">＋</div><div style="font-size:13px;font-weight:600">Add Certificate</div>';
+  add.onclick=()=>openModal('addCertModal');
+  g.appendChild(add);
 }
 
-function selectCertType(ct) {
-  activeCertTypeId = ct.id;
-  document.getElementById('selectedCertName').textContent = ct.name;
-  document.getElementById('activeLibName').textContent = ct.name;
-  document.getElementById('activeLibPeriod').textContent = ct.period;
-  const regUrl = window.location.origin + '/register/' + ct.registration_token;
-  const link = document.getElementById('regLinkDisplay');
-  link.textContent = '🔗 ' + regUrl;
-  link.href = regUrl;
-  document.getElementById('noSelectionMsg').style.display = 'none';
-  document.getElementById('participantsContent').style.display = 'block';
+function selectCT(ct){
+  activeCT=ct;
+  document.getElementById('activeCertBadge').textContent=ct.name;
+  document.getElementById('activeCertBadge').style.display='block';
   renderLibrary();
-  loadUsers();
-  // Switch to participants tab
-  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.getElementById('tab-participants').classList.add('active');
-  document.querySelectorAll('.tab-btn')[1].classList.add('active');
+  loadParticipantPanel();
+  nav('participants');
 }
 
-async function deleteCertType(e, id) {
+async function delCT(e,id){
   e.stopPropagation();
-  if (!confirm('Remove this certificate from library?')) return;
-  await fetch('/api/cert-types/' + id, { method: 'DELETE' });
-  if (activeCertTypeId === id) activeCertTypeId = null;
-  loadLibrary();
-  toast('Removed from library');
+  if(!confirm('Remove this certificate from the library?'))return;
+  await api('/api/cert-types/'+id,{method:'DELETE'});
+  if(activeCT&&activeCT.id===id){activeCT=null;document.getElementById('activeCertBadge').style.display='none'}
+  toast('Removed from library'); loadLibrary();
 }
 
-// ── UPLOAD ───────────────────────────────────────────────────────────────────
-function handleFileSelect(input) {
-  const label = document.getElementById('dropLabel');
-  label.textContent = input.files[0] ? '✅ ' + input.files[0].name : '📄 Click or drag & drop master certificate';
+// ── UPLOAD ─────────────────────────────────────────────────────────────────
+function onFileSelect(input){
+  const lbl=document.getElementById('dzLabel');
+  lbl.textContent=input.files[0]?'✅ '+input.files[0].name:'Click or drag & drop master certificate';
 }
-const dz = document.getElementById('dropZone');
-dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
-dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
-dz.addEventListener('drop', e => {
-  e.preventDefault(); dz.classList.remove('dragover');
-  const fi = document.getElementById('masterFileInput');
-  fi.files = e.dataTransfer.files;
-  handleFileSelect(fi);
+const dz=document.getElementById('dzCert');
+dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('over')});
+dz.addEventListener('dragleave',()=>dz.classList.remove('over'));
+dz.addEventListener('drop',e=>{
+  e.preventDefault();dz.classList.remove('over');
+  document.getElementById('acFile').files=e.dataTransfer.files;
+  onFileSelect(document.getElementById('acFile'));
 });
 
-async function uploadCertType() {
-  const name = document.getElementById('newCertName').value.trim();
-  const period = document.getElementById('newCertPeriod').value.trim();
-  const file = document.getElementById('masterFileInput').files[0];
-  const emailMsg = document.getElementById('newCertEmail').value.trim();
-  if (!name || !period || !file) { toast('Name, period and file required'); return; }
-  const fd = new FormData();
-  fd.append('name', name);
-  fd.append('period', period);
-  fd.append('master_file', file);
-  if (emailMsg) fd.append('email_message', emailMsg);
-  const res = await fetch('/api/cert-types', { method:'POST', body:fd });
-  const data = await res.json();
-  if (data.error) { toast('Error: ' + data.error); return; }
+async function uploadCert(){
+  const name=document.getElementById('acName').value.trim();
+  const code=document.getElementById('acCode').value.trim().toUpperCase()||'GEN';
+  const period=document.getElementById('acPeriod').value.trim();
+  const file=document.getElementById('acFile').files[0];
+  if(!name||!period||!file){toast('Name, period and file are required');return}
+  const fd=new FormData();
+  fd.append('name',name); fd.append('course_code',code);
+  fd.append('period',period); fd.append('master_file',file);
+  const subj=document.getElementById('acSubject').value.trim();
+  const body=document.getElementById('acEmail').value.trim();
+  if(subj)fd.append('email_subject',subj);
+  if(body)fd.append('email_message',body);
+  const res=await fetch('/api/cert-types',{method:'POST',body:fd});
+  const data=await res.json();
+  if(data.error){toast('Error: '+data.error);return}
   closeModal('addCertModal');
-  document.getElementById('newCertName').value = '';
-  document.getElementById('newCertPeriod').value = '';
-  document.getElementById('masterFileInput').value = '';
-  document.getElementById('newCertEmail').value = '';
-  document.getElementById('dropLabel').textContent = '📄 Click or drag & drop master certificate';
-  toast('✅ Certificate added to library');
+  ['acName','acCode','acPeriod','acSubject','acEmail'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('dzLabel').textContent='Click or drag & drop master certificate';
+  document.getElementById('acFile').value='';
+  toast('✅ Certificate added. OCR: '+(data.ocr_message||'done'));
   loadLibrary();
 }
 
-// ── PARTICIPANTS ─────────────────────────────────────────────────────────────
-function loadUsers() {
-  if (!activeCertTypeId) return;
-  if (table) { table.destroy(); table = null; }
-  table = $('#usersTable').DataTable({
-    ajax: { url: `/api/users/${activeCertTypeId}`, dataSrc: 'data' },
-    pageLength: 10,
-    columns: [
-      { data:'id', render:() => '<input type="checkbox" class="user-checkbox">', orderable:false },
-      { data:'full_name' },
-      { data:'email' },
-      { data:'certificate_id', render: d => `<code style="font-size:10px">${d}</code>` },
-      { data:null, orderable:false, render: row => `<span class="qr-toggle" title="${row.include_qr?'QR enabled':'QR disabled'}" onclick="toggleQR(${row.id},this)">${row.include_qr?'📲':'⬜'}</span>` },
-      { data:'status', render: d => `<span class="status-badge status-${d}">${d}</span>` },
-      { data:'created_at', render: d => `<span style="font-size:11px;color:var(--muted)">${d}</span>` },
-      { data:'id', orderable:false, render: id => `<button class="btn btn-sm" style="background:#9c27b0;color:#fff" onclick="nudge(${id})">Nudge</button>` }
+// ── FIELD MAPPER ───────────────────────────────────────────────────────────
+async function openMapper(e,ctId){
+  e.stopPropagation();
+  editingCTId=ctId;
+  const data=await api('/api/cert-types/'+ctId);
+  const coords=data.overlay_coords||{};
+  const list=document.getElementById('fieldList');
+  const fields=[
+    {key:'name',  label:'Name',    xs:['name_x','name_y','name_w','name_font_size']},
+    {key:'certid',label:'Cert ID', xs:['cert_id_x','cert_id_y','cert_id_font_size',null]},
+    {key:'date',  label:'Date',    xs:['date_x','date_y','date_font_size',null]},
+    {key:'qr',    label:'QR Code', xs:['qr_x','qr_y','qr_size',null]},
+  ];
+  list.innerHTML='<div class="field-row" style="margin-bottom:6px"><span></span><span style="text-align:center;font-size:10px;color:var(--muted);font-weight:700">X</span><span style="text-align:center;font-size:10px;color:var(--muted);font-weight:700">Y</span><span style="text-align:center;font-size:10px;color:var(--muted);font-weight:700">W / Size</span><span style="text-align:center;font-size:10px;color:var(--muted);font-weight:700">Font px</span></div>';
+  fields.forEach(f=>{
+    const row=document.createElement('div');
+    row.className='field-row';
+    row.innerHTML=`<span class="field-label">${f.label}</span>`+
+      f.xs.map((k,i)=>k?
+        `<input type="number" id="fm_${k}" value="${coords[k]||0}" placeholder="${k}">`
+        :'<span></span>'
+      ).join('');
+    list.appendChild(row);
+  });
+  // Alignment for name
+  const alignRow=document.createElement('div');
+  alignRow.style='margin-top:8px;display:flex;align-items:center;gap:10px';
+  alignRow.innerHTML=`<span class="field-label" style="width:80px">Alignment</span>
+    <select id="fm_name_align" style="padding:5px 9px;border:1.5px solid var(--border);border-radius:5px;font-size:12px">
+      <option value="center" ${(coords.name_align||'center')==='center'?'selected':''}>Centre</option>
+      <option value="left" ${coords.name_align==='left'?'selected':''}>Left</option>
+      <option value="right" ${coords.name_align==='right'?'selected':''}>Right</option>
+    </select>`;
+  list.appendChild(alignRow);
+  openModal('mapperModal');
+}
+
+async function saveMapping(){
+  const keys=['name_x','name_y','name_w','name_font_size',
+    'cert_id_x','cert_id_y','cert_id_font_size',
+    'date_x','date_y','date_font_size',
+    'qr_x','qr_y','qr_size'];
+  const coords={};
+  keys.forEach(k=>{
+    const el=document.getElementById('fm_'+k);
+    if(el) coords[k]=parseFloat(el.value)||0;
+  });
+  const align=document.getElementById('fm_name_align');
+  if(align) coords.name_align=align.value;
+  await api('/api/cert-types/'+editingCTId,{
+    method:'PUT', body:JSON.stringify({overlay_coords:coords})
+  });
+  toast('✅ Field positions saved');
+  // Refresh activeCT if it's the same
+  if(activeCT&&activeCT.id===editingCTId){
+    activeCT.overlay_coords=coords;
+  }
+  closeModal('mapperModal');
+}
+
+async function runPreviewFor(e,ctId){
+  e.stopPropagation();
+  const w=window.open('','_blank');
+  w.document.write('<p style="font-family:sans-serif;padding:20px">Generating preview…</p>');
+  const res=await fetch(`/api/cert-types/${ctId}/preview`,{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({full_name:'Jane Smith',cert_id:'MLJ-GEN-2026-000001',issue_date:'01 January 2026',include_qr:true})
+  });
+  const blob=await res.blob();
+  const url=URL.createObjectURL(blob);
+  w.location.href=url;
+}
+
+async function runPreview(){
+  if(!editingCTId)return;
+  await saveMapping();
+  runPreviewFor({stopPropagation:()=>{}},editingCTId);
+}
+
+// ── PARTICIPANTS ───────────────────────────────────────────────────────────
+function loadParticipantPanel(){
+  if(!activeCT)return;
+  document.getElementById('noSelMsg').style.display='none';
+  document.getElementById('participantsContent').style.display='block';
+  document.getElementById('pTitle').textContent=activeCT.name;
+  document.getElementById('pPeriod').textContent=activeCT.period+' · '+activeCT.course_code;
+  const regUrl=window.location.origin+'/register/'+activeCT.registration_token;
+  document.getElementById('regLink').href=regUrl;
+  document.getElementById('regLink').textContent=regUrl;
+  loadUsers();
+}
+
+async function loadUsers(){
+  if(!activeCT)return;
+  const sf=document.getElementById('statusFilter').value;
+  const url=`/api/users/${activeCT.id}`+(sf?`?status=${sf}`:'');
+  if(dtUsers){dtUsers.destroy();dtUsers=null}
+  dtUsers=$('#usersTable').DataTable({
+    ajax:{url,dataSrc:'data'},
+    pageLength:15,
+    columns:[
+      {data:'id',render:()=>'<input type="checkbox" class="ucb">',orderable:false,width:'32px'},
+      {data:'full_name'},
+      {data:'email',render:d=>`<span style="font-size:12px">${d}</span>`},
+      {data:'certificate_id',render:d=>`<code class="cert-id">${d}</code>`},
+      {data:null,orderable:false,render:r=>`<span class="qr-toggle" title="${r.include_qr?'QR on':'QR off'}" onclick="toggleQR(${r.id},this)">${r.include_qr?'📲':'⬜'}</span>`},
+      {data:'status',render:d=>`<span class="status-badge s-${d}">${d}</span>`},
+      {data:'score',render:d=>d!=null?`<span style="font-size:12px">${d}</span>`:'—'},
+      {data:'created_at',render:d=>`<span style="font-size:11px;color:var(--muted)">${d}</span>`},
+      {data:'id',orderable:false,render:id=>`<button class="btn btn-xs btn-ghost" onclick="nudge(${id})">Nudge</button>`},
     ],
-    language:{ emptyTable:'No participants yet' },
-    dom: '<"top"f>rt<"bottom"ip>'
+    language:{emptyTable:'No participants'},
+    dom:'<"top"f>rt<"bottom"ip>',
+    drawCallback: function(){
+      // Recalculate stats
+      const all=this.api().data().toArray();
+      const counts={registered:0,approved:0,sending:0,sent:0,rejected:0,archived:0};
+      all.forEach(r=>{counts[r.status]=(counts[r.status]||0)+1});
+      const grid=document.getElementById('pStats');
+      grid.innerHTML=Object.entries(counts).filter(([,v])=>v>0).map(([k,v])=>
+        `<div class="stat-card"><div class="stat-num">${v}</div><div class="stat-label">${k}</div></div>`
+      ).join('');
+    }
   });
 }
 
-async function toggleQR(userId, el) {
-  const res = await fetch('/api/users/toggle-qr', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user_id:userId}) });
-  const data = await res.json();
-  el.textContent = data.include_qr ? '📲' : '⬜';
-  el.title = data.include_qr ? 'QR enabled' : 'QR disabled';
-  toast(data.include_qr ? 'QR code enabled for this participant' : 'QR code disabled');
-}
-
-function getSelectedIds() {
-  const ids = [];
-  $('.user-checkbox:checked').each(function() {
-    const row = table.row($(this).closest('tr')).data();
-    if (row) ids.push(row.id);
+function getSelIds(){
+  const ids=[];
+  $('.ucb:checked').each(function(){
+    const row=dtUsers.row($(this).closest('tr')).data();
+    if(row) ids.push(row.id);
   });
   return ids;
 }
+function toggleAll(){$('.ucb').prop('checked',document.getElementById('selAll').checked)}
 
-function toggleSelectAll() {
-  $('.user-checkbox').prop('checked', document.getElementById('selectAll').checked);
+async function toggleQR(uid,el){
+  const d=await api('/api/users/toggle-qr',{method:'POST',body:JSON.stringify({user_id:uid})});
+  el.textContent=d.include_qr?'📲':'⬜'; el.title=d.include_qr?'QR on':'QR off';
+  toast(d.include_qr?'QR enabled':'QR disabled');
 }
 
-async function batchAction(action) {
-  const ids = getSelectedIds();
-  if (!ids.length) { toast('Select participants first'); return; }
-  if (!confirm(`${action.toUpperCase()} ${ids.length} participant(s)?`)) return;
-  const res = await fetch(`/api/${action}`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ user_ids:ids, cert_type_id:activeCertTypeId })
-  });
-  const data = await res.json();
-  toast(data.message);
-  loadUsers();
+async function batchApprove(){
+  const ids=getSelIds();
+  if(!ids.length){toast('Select participants first');return}
+  const d=await api('/api/approve',{method:'POST',body:JSON.stringify({user_ids:ids})});
+  toast('✅ '+d.message); loadUsers();
+}
+async function batchReject(){
+  const ids=getSelIds();
+  if(!ids.length){toast('Select participants first');return}
+  const d=await api('/api/reject',{method:'POST',body:JSON.stringify({user_ids:ids})});
+  toast(d.message); loadUsers();
+}
+async function batchArchive(){
+  const ids=getSelIds();
+  if(!ids.length){toast('Select participants first');return}
+  if(!confirm(`Archive ${ids.length} participant(s)? They will be moved to storage.`))return;
+  const d=await api('/api/users/archive',{method:'POST',body:JSON.stringify({user_ids:ids})});
+  toast('📦 '+d.message); loadUsers();
+}
+async function batchDelete(){
+  const ids=getSelIds();
+  if(!ids.length){toast('Select participants first');return}
+  if(!confirm(`Delete ${ids.length} participant(s)? Certificate IDs will be preserved in archive.`))return;
+  const d=await api('/api/delete',{method:'POST',body:JSON.stringify({user_ids:ids})});
+  toast('🗑 '+d.message); loadUsers();
 }
 
-async function addParticipant() {
-  const payload = {
-    first_name: document.getElementById('pFirstName').value.trim(),
-    surname: document.getElementById('pSurname').value.trim(),
-    other_name: document.getElementById('pOtherName').value.trim(),
-    email: document.getElementById('pEmail').value.trim(),
-    cert_type_id: activeCertTypeId
-  };
-  if (!payload.first_name || !payload.surname || !payload.email) { toast('First name, surname and email required'); return; }
-  const res = await fetch('/api/users/add', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  const data = await res.json();
+async function addParticipant(){
+  const fn=document.getElementById('pFn').value.trim();
+  const sn=document.getElementById('pSn').value.trim();
+  const em=document.getElementById('pEm').value.trim();
+  if(!fn||!sn||!em){toast('First name, surname and email required');return}
+  const d=await api('/api/users/add',{method:'POST',body:JSON.stringify({
+    first_name:fn,surname:sn,other_name:document.getElementById('pOn').value.trim(),
+    email:em,cert_type_id:activeCT.id
+  })});
+  if(d.error){toast('Error: '+d.error);return}
+  toast(`✅ ${d.message} — ID: ${d.certificate_id}`);
   closeModal('addParticipantModal');
-  ['pFirstName','pSurname','pOtherName','pEmail'].forEach(id => document.getElementById(id).value = '');
-  toast('✅ ' + data.message);
+  ['pFn','pSn','pOn','pEm'].forEach(id=>document.getElementById(id).value='');
   loadUsers();
 }
 
-async function nudge(userId) {
-  const res = await fetch('/api/nudge', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({user_id:userId}) });
-  const d = await res.json();
+function onImportSelect(input){
+  document.getElementById('dzImportLabel').textContent=
+    input.files[0]?'✅ '+input.files[0].name:'Click or drag CSV / XLSX here';
+}
+const dzi=document.getElementById('dzImport');
+dzi.addEventListener('dragover',e=>{e.preventDefault();dzi.classList.add('over')});
+dzi.addEventListener('dragleave',()=>dzi.classList.remove('over'));
+dzi.addEventListener('drop',e=>{
+  e.preventDefault();dzi.classList.remove('over');
+  document.getElementById('importFile').files=e.dataTransfer.files;
+  onImportSelect(document.getElementById('importFile'));
+});
+
+async function importParticipants(){
+  const file=document.getElementById('importFile').files[0];
+  if(!file||!activeCT){toast('Select a file first');return}
+  const fd=new FormData();
+  fd.append('file',file); fd.append('cert_type_id',activeCT.id);
+  const res=await fetch('/api/users/import',{method:'POST',body:fd});
+  const d=await res.json();
+  if(d.error){toast('Error: '+d.error);return}
+  toast('✅ '+d.message); closeModal('importModal');
+  document.getElementById('importFile').value='';
+  document.getElementById('dzImportLabel').textContent='Click or drag CSV / XLSX here';
+  loadUsers();
+}
+
+async function nudge(uid){
+  const d=await api('/api/nudge',{method:'POST',body:JSON.stringify({user_id:uid})});
   toast(d.message);
 }
 
-// ── SEND ─────────────────────────────────────────────────────────────────────
-function openSendModal(allMode) {
-  sendAllMode = allMode;
-  if (!allMode && !getSelectedIds().length) { toast('Select participants first'); return; }
-  document.getElementById('sendModalTitle').textContent = allMode ? 'Send to ALL Approved' : `Send to ${getSelectedIds().length} selected`;
-  document.getElementById('sendModalDesc').textContent = allMode
-    ? 'All participants with "approved" status will receive their certificates.'
-    : `${getSelectedIds().length} selected participant(s) will receive their certificates.`;
-  populateDraftSelect();
+function copyRegLink(){
+  const link=document.getElementById('regLink').href;
+  navigator.clipboard.writeText(link).then(()=>toast('Registration link copied!'));
+}
+
+// ── SEND FLOW ─────────────────────────────────────────────────────────────
+function initSend(allMode){
+  sendAllMode=allMode;
+  if(!activeCT){toast('Select a certificate first');return}
+  if(!allMode&&!getSelIds().length){toast('Select participants first');return}
+  document.getElementById('sendTitle').textContent=allMode?'Send to All Approved':'Send to Selected';
+  populateSendDraftSelect();
+  showStep(1);
   openModal('sendModal');
 }
 
-function populateDraftSelect() {
-  const sel = document.getElementById('sendDraftSelect');
-  sel.innerHTML = '<option value="">— Use default template —</option>';
-  drafts.forEach(d => sel.appendChild(new Option(d.subject, d.id)));
+function populateSendDraftSelect(){
+  const sel=document.getElementById('sendDraftSel');
+  sel.innerHTML='<option value="">— Use default template —</option>';
+  drafts.forEach(d=>sel.appendChild(new Option(d.name,d.id)));
 }
 
-document.getElementById('sendDraftSelect').addEventListener('change', function() {
-  const preview = document.getElementById('draftPreview');
-  if (!this.value) { preview.style.display='none'; return; }
-  const draft = drafts.find(d => d.id == this.value);
-  if (draft) {
-    document.getElementById('previewSubject').value = draft.subject;
-    document.getElementById('previewBody').value = draft.body;
-    preview.style.display = 'block';
+function onDraftSelect(){
+  const id=document.getElementById('sendDraftSel').value;
+  const preview=document.getElementById('draftPreview');
+  if(!id){preview.style.display='none';return}
+  const d=drafts.find(x=>x.id==id);
+  if(d){
+    document.getElementById('previewSubj').value=d.subject;
+    document.getElementById('previewBody').value=d.body;
+    preview.style.display='block';
   }
-});
+}
 
-async function confirmSend() {
-  const draftId = document.getElementById('sendDraftSelect').value || null;
-  const endpoint = sendAllMode ? '/api/send-all-approved' : '/api/send';
-  const payload = { cert_type_id: activeCertTypeId, draft_id: draftId };
-  if (!sendAllMode) payload.user_ids = getSelectedIds();
-  const res = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  const data = await res.json();
+async function requestConfirmation(){
+  const ids=sendAllMode?[]:getSelIds();
+  const payload={
+    user_ids:ids, cert_type_id:activeCT.id,
+    draft_id:document.getElementById('sendDraftSel').value||null,
+    confirmed:false
+  };
+  const endpoint=sendAllMode?'/api/send-all-approved':'/api/send';
+  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
+  if(!d.needs_confirmation){toast(d.message||d.error);return}
+  confirmData=d;
+  document.getElementById('cfCount').textContent=d.recipient_count;
+  document.getElementById('cfCourse').textContent=d.course;
+  document.getElementById('cfSender').textContent=d.sender;
+  document.getElementById('cfCerts').textContent=d.recipient_count+' PDF certificate(s)';
+  showStep(2);
+}
+
+async function confirmSend(){
+  const ids=sendAllMode?[]:getSelIds();
+  const payload={
+    user_ids:ids, cert_type_id:activeCT.id,
+    draft_id:document.getElementById('sendDraftSel').value||null,
+    confirmed:true
+  };
+  const endpoint=sendAllMode?'/api/send-all-approved':'/api/send';
+  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
   closeModal('sendModal');
-  toast('📧 ' + data.message);
+  toast('📧 '+d.message);
   loadUsers();
 }
 
-// ── DRAFTS ───────────────────────────────────────────────────────────────────
-async function loadDrafts() {
-  const res = await fetch('/api/drafts');
-  drafts = await res.json();
-  renderDrafts();
+function showStep(n){
+  document.getElementById('sendStep1').style.display=n===1?'block':'none';
+  document.getElementById('sendStep2').style.display=n===2?'block':'none';
 }
 
-function renderDrafts() {
-  const list = document.getElementById('draftsList');
-  if (!drafts.length) { list.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0">No drafts yet</p>'; return; }
-  list.innerHTML = drafts.map(d => `
-    <div class="draft-card" id="draft-${d.id}">
-      <div style="display:flex;align-items:flex-start;gap:8px">
-        <div style="flex:1">
-          <div class="draft-subject">${d.subject}</div>
-          <div class="draft-preview">${d.body}</div>
-          <div class="draft-meta">Updated ${d.updated_at}</div>
+// ── DRAFTS ─────────────────────────────────────────────────────────────────
+async function loadDrafts(){
+  const res=await fetch('/api/drafts');
+  drafts=await res.json();
+  renderDrafts();
+  renderTplVars();
+}
+
+function renderDrafts(){
+  const list=document.getElementById('draftList');
+  if(!drafts.length){
+    list.innerHTML='<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No drafts yet — create one above</p>';
+    return;
+  }
+  list.innerHTML=drafts.map(d=>`
+    <div class="draft-card" id="dc-${d.id}">
+      <div class="dc-body">
+        <div class="dc-name">${d.name}</div>
+        <div class="dc-subj">${d.subject}</div>
+        <div style="margin-top:5px">
+          <span class="dc-mode ${d.include_attachment?'mode-a':'mode-b'}">
+            ${d.include_attachment?'Mode A — Cert dispatch':'Mode B — Campaign'}
+          </span>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          <button class="btn btn-outline btn-xs" onclick="editDraft(${d.id})">Edit</button>
-          <button class="btn btn-xs" style="background:var(--red);color:#fff" onclick="deleteDraft(${d.id})">Del</button>
-        </div>
+      </div>
+      <div class="draft-actions">
+        <button class="btn btn-outline btn-xs" onclick="editDraft(${d.id})">Edit</button>
+        <button class="btn btn-xs btn-red" onclick="deleteDraft(${d.id})">Del</button>
       </div>
     </div>`).join('');
 }
 
-function clearDraftForm() {
-  document.getElementById('draftSubject').value = '';
-  document.getElementById('draftBody').value = '';
-  document.getElementById('draftModalTitle').textContent = 'New Draft';
-  editingDraftId = null;
+function renderTplVars(){
+  const containers=['tplVarList','draftTplVars'];
+  containers.forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el)return;
+    el.innerHTML=TPL_VARS.map(v=>
+      `<span class="tpl-var" onclick="insertVar('${v}')" title="Click to copy">${v}</span>`
+    ).join('');
+  });
 }
 
-function editDraft(id) {
-  const d = drafts.find(x => x.id === id);
-  if (!d) return;
-  editingDraftId = id;
-  document.getElementById('draftModalTitle').textContent = 'Edit Draft';
-  document.getElementById('draftSubject').value = d.subject;
-  document.getElementById('draftBody').value = d.body;
+function insertVar(v){
+  navigator.clipboard.writeText(v).then(()=>toast('Copied: '+v));
+}
+
+function newDraft(){
+  editingDraftId=null;
+  document.getElementById('draftModalTitle').textContent='New Draft';
+  ['dName','dSubj','dBody'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('dMode').value='1';
+  renderTplVars();
   openModal('draftModal');
 }
 
-async function saveDraft() {
-  const payload = {
-    subject: document.getElementById('draftSubject').value.trim(),
-    body: document.getElementById('draftBody').value.trim()
+function editDraft(id){
+  editingDraftId=id;
+  const d=drafts.find(x=>x.id===id);
+  if(!d)return;
+  document.getElementById('draftModalTitle').textContent='Edit Draft';
+  document.getElementById('dName').value=d.name;
+  document.getElementById('dSubj').value=d.subject;
+  document.getElementById('dBody').value=d.body;
+  document.getElementById('dMode').value=d.include_attachment?'1':'0';
+  renderTplVars();
+  openModal('draftModal');
+}
+
+async function saveDraft(){
+  const payload={
+    name:document.getElementById('dName').value.trim()||'Untitled',
+    subject:document.getElementById('dSubj').value.trim(),
+    body:document.getElementById('dBody').value.trim(),
+    include_attachment:document.getElementById('dMode').value==='1',
   };
-  if (!payload.subject || !payload.body) { toast('Subject and body required'); return; }
-  const url = editingDraftId ? `/api/drafts/${editingDraftId}` : '/api/drafts';
-  const method = editingDraftId ? 'PUT' : 'POST';
-  const res = await fetch(url, { method, headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-  const data = await res.json();
-  closeModal('draftModal');
-  toast('✅ ' + data.message);
-  loadDrafts();
+  if(!payload.subject||!payload.body){toast('Subject and body required');return}
+  const url=editingDraftId?`/api/drafts/${editingDraftId}`:'/api/drafts';
+  const method=editingDraftId?'PUT':'POST';
+  const d=await api(url,{method,body:JSON.stringify(payload)});
+  toast('✅ '+d.message); closeModal('draftModal'); loadDrafts();
 }
 
-async function deleteDraft(id) {
-  if (!confirm('Delete this draft?')) return;
-  await fetch(`/api/drafts/${id}`, { method:'DELETE' });
-  toast('Draft deleted');
-  loadDrafts();
+async function deleteDraft(id){
+  if(!confirm('Delete this draft?'))return;
+  await api(`/api/drafts/${id}`,{method:'DELETE'});
+  toast('Draft deleted'); loadDrafts();
 }
 
-// ── INIT ─────────────────────────────────────────────────────────────────────
+// ── CAMPAIGNS ──────────────────────────────────────────────────────────────
+async function loadCampaigns(){
+  const camps=await api('/api/campaigns');
+  const list=document.getElementById('campaignList');
+  if(!camps.length){
+    list.innerHTML='<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px">No campaigns yet</p>';
+    return;
+  }
+  list.innerHTML=`<table style="width:100%;font-size:12px;border-collapse:collapse">
+    <thead><tr style="background:var(--gl)">
+      <th style="padding:8px;text-align:left">Name</th>
+      <th>Mode</th><th>Recipients</th><th>Sent</th><th>Failed</th><th>Status</th><th>Date</th>
+    </tr></thead>
+    <tbody>${camps.map(c=>`
+      <tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:8px;font-weight:600">${c.name}</td>
+        <td style="text-align:center"><span class="dc-mode ${c.include_attachment?'mode-a':'mode-b'}">${c.include_attachment?'A':'B'}</span></td>
+        <td style="text-align:center">${c.recipient_count}</td>
+        <td style="text-align:center;color:var(--g)">${c.sent_count}</td>
+        <td style="text-align:center;color:var(--red)">${c.failed_count}</td>
+        <td style="text-align:center"><span class="camp-status camp-${c.status}">${c.status}</span></td>
+        <td style="text-align:center;color:var(--muted)">${c.created_at}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function populateCampaignDropdowns(){
+  const certSel=document.getElementById('campCertType');
+  const draftSel=document.getElementById('campDraft');
+  certSel.innerHTML='<option value="">— Select group —</option>';
+  certTypes.forEach(ct=>certSel.appendChild(new Option(ct.name+' ('+ct.period+')',ct.id)));
+  draftSel.innerHTML='<option value="">— Select draft —</option>';
+  drafts.forEach(d=>draftSel.appendChild(new Option(d.name,d.id)));
+}
+
+async function createCampaign(){
+  const name=document.getElementById('campName').value.trim();
+  const ctId=document.getElementById('campCertType').value;
+  const dId=document.getElementById('campDraft').value;
+  if(!name||!dId){toast('Name and draft required');return}
+
+  // Get all sent participants from selected cert type as recipients
+  let userIds=[];
+  if(ctId){
+    const res=await fetch(`/api/users/${ctId}?status=sent`);
+    const data=await res.json();
+    userIds=(data.data||[]).map(u=>u.id);
+  }
+
+  const d=await api('/api/campaigns',{method:'POST',body:JSON.stringify({
+    name, cert_type_id:ctId||null, draft_id:dId,
+    user_ids:userIds,
+    include_attachment:false,
+    send_now:document.getElementById('campSendNow').checked
+  })});
+  toast('✅ '+d.message); closeModal('campaignModal'); loadCampaigns();
+}
+
+// ── AUDIT ──────────────────────────────────────────────────────────────────
+async function loadAudit(){
+  const logs=await api('/api/audit');
+  if($.fn.DataTable.isDataTable('#auditTable')){
+    $('#auditTable').DataTable().destroy();
+  }
+  $('#auditTable').DataTable({
+    data:logs,
+    pageLength:25,
+    order:[[3,'desc']],
+    columns:[
+      {data:'action',render:d=>`<span class="status-badge s-${d==='sent'?'sent':d==='approved'?'approved':'registered'}">${d}</span>`},
+      {data:'performed_by',render:d=>`<span style="font-size:12px">${d||'system'}</span>`},
+      {data:'details',render:d=>d?`<span style="font-size:11px;color:var(--muted)">${JSON.stringify(d).slice(0,80)}</span>`:'—'},
+      {data:'created_at'},
+    ],
+    language:{emptyTable:'No audit entries yet'}
+  });
+}
+
+// ── SETTINGS ───────────────────────────────────────────────────────────────
+async function loadSettings(){
+  const d=await api('/api/org');
+  document.getElementById('sOrgName').value=d.org_name||'';
+  document.getElementById('sSenderName').value=d.sender_name||'';
+  document.getElementById('sSenderEmail').value=d.sender_email||'';
+  document.getElementById('sReplyTo').value=d.reply_to_email||'';
+  document.getElementById('sVerifyUrl').value=d.verify_base_url||'';
+}
+
+async function saveSettings(){
+  const d=await api('/api/org',{method:'POST',body:JSON.stringify({
+    org_name:document.getElementById('sOrgName').value.trim(),
+    sender_name:document.getElementById('sSenderName').value.trim(),
+    sender_email:document.getElementById('sSenderEmail').value.trim(),
+    reply_to_email:document.getElementById('sReplyTo').value.trim(),
+    verify_base_url:document.getElementById('sVerifyUrl').value.trim(),
+  })});
+  toast('✅ '+d.message);
+}
+
+// ── INIT ────────────────────────────────────────────────────────────────────
 loadLibrary();
 loadDrafts();
+renderTplVars();
 </script>
 </body>
 </html>

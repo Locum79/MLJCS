@@ -1,20 +1,83 @@
+"""
+Intelligent Certificate Generation Engine.
+Preserves original visual integrity — overlays only editable regions.
+Supports pixel-perfect rendering, dynamic font scaling, QR embedding.
+"""
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from PIL import Image
 import qrcode
 import io
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Try to register custom fonts if available
+_FONT_DIR = os.path.join(os.path.dirname(__file__), '../../static/fonts')
+_DEFAULT_FONT = 'Helvetica-Bold'
+_DEFAULT_FONT_REGULAR = 'Helvetica'
 
 
-def _make_qr_bytes(data: str) -> io.BytesIO:
-    qr = qrcode.QRCode(version=1, box_size=8, border=2)
+def _register_fonts():
+    """Register any TTF fonts found in static/fonts/."""
+    if not os.path.isdir(_FONT_DIR):
+        return
+    for fname in os.listdir(_FONT_DIR):
+        if fname.endswith('.ttf'):
+            name = fname[:-4]
+            try:
+                pdfmetrics.registerFont(TTFont(name, os.path.join(_FONT_DIR, fname)))
+            except Exception:
+                pass
+
+_register_fonts()
+
+
+def _make_qr(data: str, size: int = 90) -> io.BytesIO:
+    qr = qrcode.QRCode(version=1, box_size=6, border=2,
+                       error_correction=qrcode.constants.ERROR_CORRECT_M)
     qr.add_data(data)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="black", back_color="white")
+    img = qr.make_image(fill_color='black', back_color='white')
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     buf.seek(0)
     return buf
+
+
+def _auto_font_size(text: str, max_width: float, max_height: float,
+                    font_name: str, start_size: int = 32) -> int:
+    """Scale font down until text fits within max_width."""
+    from reportlab.pdfbase.pdfmetrics import stringWidth
+    size = start_size
+    while size > 7:
+        w = stringWidth(text, font_name, size)
+        if w <= max_width and size <= max_height * 1.3:
+            return size
+        size -= 1
+    return size
+
+
+def _master_to_reader(file_path: str, file_type: str) -> PdfReader:
+    """Load master template as PDF reader regardless of source format."""
+    if file_type == 'png':
+        img = Image.open(file_path)
+        iw, ih = img.size
+        scale = min(841.89 / ih, 595.28 / iw)
+        pw, ph = iw * scale, ih * scale
+        buf = io.BytesIO()
+        c = canvas.Canvas(buf, pagesize=(pw, ph))
+        c.drawImage(ImageReader(file_path), 0, 0, width=pw, height=ph,
+                    preserveAspectRatio=True)
+        c.save()
+        buf.seek(0)
+        return PdfReader(buf)
+    else:
+        return PdfReader(file_path)
 
 
 def generate_personalized_pdf(
@@ -23,90 +86,86 @@ def generate_personalized_pdf(
     full_name: str,
     certificate_id: str,
     issuance_date: str,
-    include_qr: bool = False,
+    include_qr: bool = True,
     cert_name: str = '',
-    master_file_type: str = 'pdf'
+    master_file_type: str = 'pdf',
+    verify_url: str = '',
+    font_name: str = None,
 ) -> bytes:
     """
-    Overlay participant details onto master certificate (PDF or PNG).
-    Only name + cert_id + date are overlaid — all other master content untouched.
-    QR is optional per participant.
+    Generate a personalised certificate by overlaying text onto the master.
+    Only nominated regions change — all other visual elements preserved exactly.
     """
-
-    # --- Load master as PDF page ---
-    if master_file_type == 'png':
-        # Convert PNG master to a single-page PDF in memory
-        img = Image.open(master_pdf_path)
-        img_w, img_h = img.size
-        # A4-ish at 72dpi scaling
-        scale = min(841 / img_h, 595 / img_w)
-        page_w = img_w * scale
-        page_h = img_h * scale
-
-        master_buf = io.BytesIO()
-        c_master = canvas.Canvas(master_buf, pagesize=(page_w, page_h))
-        c_master.drawImage(ImageReader(master_pdf_path), 0, 0, width=page_w, height=page_h)
-        c_master.save()
-        master_buf.seek(0)
-        reader = PdfReader(master_buf)
-    else:
-        reader = PdfReader(master_pdf_path)
-
+    reader = _master_to_reader(master_pdf_path, master_file_type)
     writer = PdfWriter()
     master_page = reader.pages[0]
+
     page_w = float(master_page.mediabox.width)
     page_h = float(master_page.mediabox.height)
 
-    # --- Build overlay layer ---
+    name_font = font_name or _DEFAULT_FONT
+    body_font = _DEFAULT_FONT_REGULAR
+
+    # Validate font availability — fall back to Helvetica
+    try:
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        stringWidth('test', name_font, 12)
+    except Exception:
+        name_font = _DEFAULT_FONT
+        body_font = _DEFAULT_FONT_REGULAR
+
     packet = io.BytesIO()
     c = canvas.Canvas(packet, pagesize=(page_w, page_h))
 
-    # Name
-    font_size = overlay_coords.get('name_font_size', 28)
-    c.setFont("Helvetica-Bold", font_size)
-    c.drawCentredString(
-        overlay_coords.get('name_x', page_w / 2),
-        overlay_coords.get('name_y', page_h * 0.45),
-        full_name
-    )
+    # ── Name ────────────────────────────────────────────────────────────────
+    name_x = overlay_coords.get('name_x', page_w / 2)
+    name_y = overlay_coords.get('name_y', page_h * 0.46)
+    name_w = overlay_coords.get('name_w', page_w * 0.7)
+    name_h = overlay_coords.get('name_h', 50)
+    name_align = overlay_coords.get('name_align', 'center')
+    start_size = overlay_coords.get('name_font_size', 32)
+    font_size = _auto_font_size(full_name, name_w, name_h, name_font, start_size)
 
-    # Certificate ID
-    c.setFont("Helvetica", overlay_coords.get('cert_id_font_size', 10))
-    c.drawString(
-        overlay_coords.get('cert_id_x', 50),
-        overlay_coords.get('cert_id_y', 52),
-        f"ID: {certificate_id}"
-    )
+    c.setFont(name_font, font_size)
+    if name_align == 'center':
+        c.drawCentredString(name_x, name_y, full_name)
+    elif name_align == 'right':
+        c.drawRightString(name_x, name_y, full_name)
+    else:
+        c.drawString(name_x, name_y, full_name)
 
-    # Issued date
-    c.setFont("Helvetica", overlay_coords.get('date_font_size', 10))
-    c.drawString(
-        overlay_coords.get('date_x', 50),
-        overlay_coords.get('date_y', 38),
-        f"Issued: {issuance_date}"
-    )
+    # ── Certificate ID ───────────────────────────────────────────────────────
+    cid_x = overlay_coords.get('cert_id_x', 60)
+    cid_y = overlay_coords.get('cert_id_y', 55)
+    cid_size = overlay_coords.get('cert_id_font_size', 9)
+    c.setFont(body_font, cid_size)
+    c.drawString(cid_x, cid_y, certificate_id)
 
-    # QR code — only if admin ticked for this participant
+    # ── Issue Date ───────────────────────────────────────────────────────────
+    date_x = overlay_coords.get('date_x', 60)
+    date_y = overlay_coords.get('date_y', 42)
+    date_size = overlay_coords.get('date_font_size', 9)
+    c.setFont(body_font, date_size)
+    c.drawString(date_x, date_y, issuance_date)
+
+    # ── QR Code ─────────────────────────────────────────────────────────────
     if include_qr:
-        qr_data = f"CERT:{certificate_id}|{full_name}|{cert_name}|PASSED|{issuance_date}"
-        qr_buf = _make_qr_bytes(qr_data)
-        qr_size = overlay_coords.get('qr_size', 90)
-        c.drawImage(
-            ImageReader(qr_buf),
-            overlay_coords.get('qr_x', page_w - 110),
-            overlay_coords.get('qr_y', 30),
-            width=qr_size,
-            height=qr_size
-        )
+        qr_url = verify_url or f"CERT:{certificate_id}"
+        qr_data = f"{qr_url}|{full_name}|{cert_name}|PASSED|{issuance_date}"
+        qr_buf = _make_qr(qr_data)
+        qr_size = overlay_coords.get('qr_size', 72)
+        qr_x = overlay_coords.get('qr_x', page_w - qr_size - 20)
+        qr_y = overlay_coords.get('qr_y', 20)
+        c.drawImage(ImageReader(qr_buf), qr_x, qr_y,
+                    width=qr_size, height=qr_size, mask='auto')
 
     c.save()
     packet.seek(0)
 
-    # --- Merge overlay onto master ---
-    overlay_page = PdfReader(packet).pages[0]
-    master_page.merge_page(overlay_page)
+    overlay_reader = PdfReader(packet)
+    master_page.merge_page(overlay_reader.pages[0])
     writer.add_page(master_page)
 
-    output = io.BytesIO()
-    writer.write(output)
-    return output.getvalue()
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
