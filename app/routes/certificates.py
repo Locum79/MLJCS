@@ -108,8 +108,11 @@ def create_cert_type():
     except Exception:
         pass
 
-    # Run OCR analysis in background — store regions
-    ocr_result = analyze_template(filepath, ext)
+    # Run OCR analysis — failures must not block the upload
+    try:
+        ocr_result = analyze_template(filepath, ext)
+    except Exception as ocr_err:
+        ocr_result = {'regions': [], 'message': f'OCR skipped: {ocr_err}'}
 
     token = str(uuid.uuid4())[:8]
     ct = CertificateType(
@@ -243,18 +246,24 @@ def get_users(cert_type_id):
 def add_user():
     data = request.json or {}
     ct_id = data.get('cert_type_id')
+    if not ct_id:
+        return jsonify({'error': 'cert_type_id required'}), 400
     ct = CertificateType.query.get_or_404(ct_id)
 
-    # Generate cert ID immediately at registration
-    seq = next_sequence(ct)
+    first_name = (data.get('first_name') or '').strip()
+    surname    = (data.get('surname')    or '').strip()
+    email      = (data.get('email')      or '').strip().lower()
+    if not first_name or not surname or not email:
+        return jsonify({'error': 'first_name, surname and email required'}), 400
+
+    seq     = next_sequence(ct)
     cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
-    db.session.flush()
 
     user = User(
-        first_name=data.get('first_name', '').strip(),
-        surname=data.get('surname', '').strip(),
-        other_name=data.get('other_name', '').strip(),
-        email=data.get('email', '').strip().lower(),
+        first_name=first_name,
+        surname=surname,
+        other_name=(data.get('other_name') or '').strip(),
+        email=email,
         certificate_type_id=ct_id,
         certificate_id=cert_id,
         status='registered',
@@ -262,7 +271,7 @@ def add_user():
     )
     db.session.add(user)
     db.session.add(AuditLog(action='registered', performed_by=current_user.email,
-                            details={'cert_id': cert_id, 'email': user.email}))
+                            details={'cert_id': cert_id, 'email': email}))
     db.session.commit()
     return jsonify({'message': 'Participant added', 'id': user.id, 'certificate_id': cert_id})
 
@@ -717,14 +726,7 @@ def verify_cert(cert_id):
                            record=record, fmt_valid=fmt_valid, cert_id=cert_id)
 
 
-@bp.route('/unsubscribe/<int:user_id>')
-def unsubscribe(user_id):
-    user = db.session.get(User, user_id)
-    if user:
-        user.unsubscribed = True
-        db.session.commit()
-    return '<html><body style="font-family:sans-serif;text-align:center;padding:60px"><h2>You have been unsubscribed.</h2><p>You will no longer receive marketing emails from us.</p></body></html>'
-
+# unsubscribe route lives in email_routes.py to avoid duplicate endpoint
 
 # ── Archive Recovery ──────────────────────────────────────────────────────────
 

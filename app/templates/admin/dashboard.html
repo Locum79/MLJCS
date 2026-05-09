@@ -605,7 +605,9 @@ document.querySelectorAll('.overlay').forEach(o=>
   o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open')}));
 
 async function api(url,opts={}){
-  const res=await fetch(url,{headers:{'Content-Type':'application/json'},...opts});
+  const headers = (opts.body instanceof FormData) ? {} : {'Content-Type':'application/json'};
+  const res = await fetch(url, {headers, ...opts});
+  if(!res.ok){ const e=await res.json().catch(()=>({error:'HTTP '+res.status})); throw e; }
   return res.json();
 }
 
@@ -619,13 +621,19 @@ function nav(name){
   if(name==='audit') loadAudit();
   if(name==='settings') loadSettings();
   if(name==='campaigns'){loadCampaigns();populateCampaignDropdowns()}
+  if(name==='email') loadEmailLogs();
+  if(name==='dns') loadDnsGuide();
 }
 
 // ── LIBRARY ────────────────────────────────────────────────────────────────
 async function loadLibrary(){
-  const res=await fetch('/api/cert-types');
-  certTypes=await res.json();
-  renderLibrary();
+  try{
+    const res=await fetch('/api/cert-types');
+    if(!res.ok){toast('❌ Failed to load library');return}
+    certTypes=await res.json();
+    if(!Array.isArray(certTypes))certTypes=[];
+    renderLibrary();
+  }catch(e){toast('❌ Library load failed: '+e.message)}
 }
 
 function renderLibrary(){
@@ -811,7 +819,11 @@ async function loadUsers(){
   const url=`/api/users/${activeCT.id}`+(sf?`?status=${sf}`:'');
   if(dtUsers){dtUsers.destroy();dtUsers=null}
   dtUsers=$('#usersTable').DataTable({
-    ajax:{url,dataSrc:'data'},
+    ajax:{
+      url,
+      dataSrc:'data',
+      error: function(xhr){ toast('❌ Failed to load participants ('+xhr.status+')'); }
+    },
     pageLength:15,
     columns:[
       {data:'id',render:()=>'<input type="checkbox" class="ucb">',orderable:false,width:'32px'},
@@ -850,36 +862,38 @@ function getSelIds(){
 function toggleAll(){$('.ucb').prop('checked',document.getElementById('selAll').checked)}
 
 async function toggleQR(uid,el){
-  const d=await api('/api/users/toggle-qr',{method:'POST',body:JSON.stringify({user_id:uid})});
-  el.textContent=d.include_qr?'📲':'⬜'; el.title=d.include_qr?'QR on':'QR off';
-  toast(d.include_qr?'QR enabled':'QR disabled');
+  try{
+    const d=await api('/api/users/toggle-qr',{method:'POST',body:JSON.stringify({user_id:uid})});
+    el.textContent=d.include_qr?'📲':'⬜'; el.title=d.include_qr?'QR on':'QR off';
+    toast(d.include_qr?'QR enabled':'QR disabled');
+  }catch(e){toast('❌ QR toggle failed');}
 }
 
 async function batchApprove(){
   const ids=getSelIds();
   if(!ids.length){toast('Select participants first');return}
-  const d=await api('/api/approve',{method:'POST',body:JSON.stringify({user_ids:ids})});
-  toast('✅ '+d.message); loadUsers();
+  try{const d=await api('/api/approve',{method:'POST',body:JSON.stringify({user_ids:ids})});toast('✅ '+d.message);loadUsers();}
+  catch(e){toast('❌ '+(e.error||'Approve failed'));}
 }
 async function batchReject(){
   const ids=getSelIds();
   if(!ids.length){toast('Select participants first');return}
-  const d=await api('/api/reject',{method:'POST',body:JSON.stringify({user_ids:ids})});
-  toast(d.message); loadUsers();
+  try{const d=await api('/api/reject',{method:'POST',body:JSON.stringify({user_ids:ids})});toast(d.message);loadUsers();}
+  catch(e){toast('❌ '+(e.error||'Reject failed'));}
 }
 async function batchArchive(){
   const ids=getSelIds();
   if(!ids.length){toast('Select participants first');return}
-  if(!confirm(`Archive ${ids.length} participant(s)? They will be moved to storage.`))return;
-  const d=await api('/api/users/archive',{method:'POST',body:JSON.stringify({user_ids:ids})});
-  toast('📦 '+d.message); loadUsers();
+  if(!confirm(`Archive ${ids.length} participant(s)?`))return;
+  try{const d=await api('/api/users/archive',{method:'POST',body:JSON.stringify({user_ids:ids})});toast('📦 '+d.message);loadUsers();}
+  catch(e){toast('❌ '+(e.error||'Archive failed'));}
 }
 async function batchDelete(){
   const ids=getSelIds();
   if(!ids.length){toast('Select participants first');return}
-  if(!confirm(`Delete ${ids.length} participant(s)? Certificate IDs will be preserved in archive.`))return;
-  const d=await api('/api/delete',{method:'POST',body:JSON.stringify({user_ids:ids})});
-  toast('🗑 '+d.message); loadUsers();
+  if(!confirm(`Delete ${ids.length} participant(s)? Certificate IDs preserved in archive.`))return;
+  try{const d=await api('/api/delete',{method:'POST',body:JSON.stringify({user_ids:ids})});toast('🗑 '+d.message);loadUsers();}
+  catch(e){toast('❌ '+(e.error||'Delete failed'));}
 }
 
 async function addParticipant(){
@@ -887,15 +901,16 @@ async function addParticipant(){
   const sn=document.getElementById('pSn').value.trim();
   const em=document.getElementById('pEm').value.trim();
   if(!fn||!sn||!em){toast('First name, surname and email required');return}
-  const d=await api('/api/users/add',{method:'POST',body:JSON.stringify({
-    first_name:fn,surname:sn,other_name:document.getElementById('pOn').value.trim(),
-    email:em,cert_type_id:activeCT.id
-  })});
-  if(d.error){toast('Error: '+d.error);return}
-  toast(`✅ ${d.message} — ID: ${d.certificate_id}`);
-  closeModal('addParticipantModal');
-  ['pFn','pSn','pOn','pEm'].forEach(id=>document.getElementById(id).value='');
-  loadUsers();
+  try{
+    const d=await api('/api/users/add',{method:'POST',body:JSON.stringify({
+      first_name:fn,surname:sn,other_name:document.getElementById('pOn').value.trim(),
+      email:em,cert_type_id:activeCT.id
+    })});
+    toast(`✅ ${d.message} — ID: ${d.certificate_id}`);
+    closeModal('addParticipantModal');
+    ['pFn','pSn','pOn','pEm'].forEach(id=>document.getElementById(id).value='');
+    loadUsers();
+  }catch(e){toast('❌ '+(e.error||'Failed to add participant'));}
 }
 
 function onImportSelect(input){
@@ -926,8 +941,8 @@ async function importParticipants(){
 }
 
 async function nudge(uid){
-  const d=await api('/api/nudge',{method:'POST',body:JSON.stringify({user_id:uid})});
-  toast(d.message);
+  try{const d=await api('/api/nudge',{method:'POST',body:JSON.stringify({user_id:uid})});toast(d.message);}
+  catch(e){toast('❌ Nudge failed');}
 }
 
 function copyRegLink(){
@@ -969,16 +984,18 @@ async function requestConfirmation(){
   const payload={
     user_ids:ids, cert_type_id:activeCT.id,
     draft_id:document.getElementById('sendDraftSel').value||null,
-    confirmed:false
+    confirmed:false, send_rate:15,
   };
-  const endpoint=sendAllMode?'/api/send-all-approved':'/api/send';
-  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
-  if(!d.needs_confirmation){toast(d.message||d.error);return}
+  const endpoint=sendAllMode?'/api/email/send-all-approved':'/api/email/send';
+  let d;
+  try{ d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)}); }
+  catch(e){ toast('❌ '+(e.error||'Send request failed')); return; }
+  if(!d.needs_confirmation){toast(d.message||d.error||'Error');return}
   confirmData=d;
   document.getElementById('cfCount').textContent=d.recipient_count;
-  document.getElementById('cfCourse').textContent=d.course;
+  document.getElementById('cfCourse').textContent=d.course+(d.period?' ('+d.period+')':'');
   document.getElementById('cfSender').textContent=d.sender;
-  document.getElementById('cfCerts').textContent=d.recipient_count+' PDF certificate(s)';
+  document.getElementById('cfCerts').textContent=d.cert_count+' PDF(s) · ~'+d.est_minutes+' min at '+d.send_rate+'/min';
   showStep(2);
 }
 
@@ -987,10 +1004,12 @@ async function confirmSend(){
   const payload={
     user_ids:ids, cert_type_id:activeCT.id,
     draft_id:document.getElementById('sendDraftSel').value||null,
-    confirmed:true
+    confirmed:true, send_rate:15,
   };
-  const endpoint=sendAllMode?'/api/send-all-approved':'/api/send';
-  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
+  const endpoint=sendAllMode?'/api/email/send-all-approved':'/api/email/send';
+  let d;
+  try{ d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)}); }
+  catch(e){ toast('❌ '+(e.error||'Send failed')); return; }
   closeModal('sendModal');
   toast('📧 '+d.message);
   loadUsers();
@@ -1003,10 +1022,14 @@ function showStep(n){
 
 // ── DRAFTS ─────────────────────────────────────────────────────────────────
 async function loadDrafts(){
-  const res=await fetch('/api/drafts');
-  drafts=await res.json();
-  renderDrafts();
-  renderTplVars();
+  try{
+    const res=await fetch('/api/drafts');
+    if(!res.ok){drafts=[];renderDrafts();return}
+    drafts=await res.json();
+    if(!Array.isArray(drafts))drafts=[];
+    renderDrafts();
+    renderTplVars();
+  }catch(e){drafts=[];renderDrafts()}
 }
 
 function renderDrafts(){
@@ -1311,46 +1334,6 @@ document.querySelectorAll('.nav-btn').forEach(b=>{
 });
 
 // Patch nav() to auto-load panels
-const _nav = nav;
-function nav(name){
-  _nav(name);
-  if(name==='email') loadEmailLogs();
-  if(name==='dns')   loadDnsGuide();
-}
-
-// Also patch send flow to use new email endpoint
-async function requestConfirmation(){
-  const ids=sendAllMode?[]:getSelIds();
-  const payload={
-    user_ids:ids, cert_type_id:activeCT.id,
-    draft_id:document.getElementById('sendDraftSel').value||null,
-    confirmed:false,
-    send_rate:15,
-  };
-  const endpoint=sendAllMode?'/api/email/send-all-approved':'/api/email/send';
-  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
-  if(!d.needs_confirmation){toast(d.message||d.error);return}
-  confirmData=d;
-  document.getElementById('cfCount').textContent=d.recipient_count;
-  document.getElementById('cfCourse').textContent=d.course+' ('+d.period+')';
-  document.getElementById('cfSender').textContent=d.sender;
-  document.getElementById('cfCerts').textContent=d.cert_count+' PDF(s) · ~'+d.est_minutes+' min at '+d.send_rate+'/min';
-  showStep(2);
-}
-
-async function confirmSend(){
-  const ids=sendAllMode?[]:getSelIds();
-  const payload={
-    user_ids:ids, cert_type_id:activeCT.id,
-    draft_id:document.getElementById('sendDraftSel').value||null,
-    confirmed:true, send_rate:15,
-  };
-  const endpoint=sendAllMode?'/api/email/send-all-approved':'/api/email/send';
-  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
-  closeModal('sendModal');
-  toast('📧 '+d.message);
-  loadUsers();
-}
 
 // ── INIT ────────────────────────────────────────────────────────────────────
 loadLibrary();

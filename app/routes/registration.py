@@ -1,5 +1,7 @@
 from flask import Blueprint, request, render_template, jsonify
 from app.models import db, User, CertificateType
+from app.engine.cert_id import generate_cert_id, next_sequence
+from datetime import datetime
 
 bp = Blueprint('registration', __name__)
 
@@ -11,16 +13,29 @@ def registration_form(token):
 @bp.route('/register/<token>', methods=['POST'])
 def submit_registration(token):
     cert_type = CertificateType.query.filter_by(registration_token=token, is_active=True).first_or_404()
-    
+
+    first_name = (request.form.get('first_name') or '').strip()
+    surname    = (request.form.get('surname')     or '').strip()
+    email      = (request.form.get('email')        or '').strip().lower()
+
+    if not first_name or not surname or not email:
+        return jsonify({'error': 'First name, surname and email are required'}), 400
+
+    # Generate certificate ID immediately at registration
+    seq     = next_sequence(cert_type)
+    cert_id = generate_cert_id(cert_type.course_code, seq, datetime.utcnow())
+
     user = User(
-        first_name=request.form['first_name'],
-        surname=request.form['surname'],
-        other_name=request.form.get('other_name', ''),
-        email=request.form['email'],
+        first_name=first_name,
+        surname=surname,
+        other_name=(request.form.get('other_name') or '').strip(),
+        email=email,
         certificate_type_id=cert_type.id,
-        status='registered'
+        certificate_id=cert_id,
+        status='registered',
+        source='public_form',
     )
     db.session.add(user)
     db.session.commit()
-    
-    return jsonify({'message': 'Registration successful'})
+
+    return jsonify({'message': 'Registration successful', 'certificate_id': cert_id})

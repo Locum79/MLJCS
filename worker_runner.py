@@ -1,6 +1,5 @@
 import redis
 from rq import Worker, Queue
-from rq.timeouts import JobTimeoutException
 import os
 from dotenv import load_dotenv
 import logging
@@ -14,4 +13,8 @@ redis_conn = redis.from_url(redis_url)
 if __name__ == '__main__':
     queues = [Queue('certificates', connection=redis_conn)]
     worker = Worker(queues, connection=redis_conn)
-    worker.work(with_scheduler=True)  # enables enqueue_in / scheduled jobs
+    try:
+        worker.work(with_scheduler=True)
+    except TypeError:
+        # Older rq version without with_scheduler param
+        worker.work()

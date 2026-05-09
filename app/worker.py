@@ -133,15 +133,20 @@ def send_nudge_email(user_id: int):
 
 def process_campaign(campaign_id: int, user_ids: list, draft_id: int):
     from app import create_app
-    from app.models import db, Campaign, User, EmailDraft, CertificateType
-    from app.engine.email_sender import send_campaign_email
+    from app.models import db, Campaign, User, EmailDraft
+    from app.services.email.sender import dispatch
+    from app.services.email.templates import render, build_context
 
     app = create_app()
     with app.app_context():
         campaign = db.session.get(Campaign, campaign_id)
-        draft = db.session.get(EmailDraft, draft_id)
-        org = _get_org_settings(None)
-        base_url = org.verify_base_url or ''
+        draft    = db.session.get(EmailDraft, draft_id)
+        org      = _get_org_settings(None)
+        base_url = (org.verify_base_url or '').rstrip('/')
+
+        if not campaign or not draft:
+            logger.error(f"process_campaign: missing campaign={campaign_id} or draft={draft_id}")
+            return
 
         sent = failed = 0
         for uid in user_ids:
@@ -149,32 +154,29 @@ def process_campaign(campaign_id: int, user_ids: list, draft_id: int):
             if not user or user.unsubscribed:
                 continue
             try:
-                ctx = {
-                    'first_name': user.first_name,
-                    'full_name': user.full_name,
-                    'course_name': user.certificate_type.name if user.certificate_type else '',
-                    'certificate_id': user.certificate_id or '',
-                    'issue_date': user.sent_at.strftime('%d %B %Y') if user.sent_at else '',
-                    'organization_name': org.org_name,
-                    'verification_link': f"{base_url}/verify/{user.certificate_id}" if user.certificate_id and base_url else '',
-                    'unsubscribe_url': f"{base_url}/unsubscribe/{user.id}" if base_url else '',
-                }
-                send_campaign_email(
+                ctx = build_context(user, user.certificate_type, org, base_url, base_url)
+                subject = render(draft.subject, ctx)
+                body    = render(draft.body,    ctx)
+                result  = dispatch(
                     to_email=user.email,
-                    context=ctx,
-                    subject_tpl=draft.subject,
-                    body_tpl=draft.body,
-                    sender_name=org.sender_name,
-                    reply_to=org.reply_to_email,
-                    unsubscribe_url=ctx.get('unsubscribe_url', ''),
+                    subject=subject,
+                    body=body,
+                    from_name=org.sender_name or 'Medical Locum Jobs',
+                    from_email=app.config.get('MAIL_USERNAME', ''),
+                    reply_to=org.reply_to_email or '',
                 )
-                sent += 1
+                if result['success']:
+                    sent += 1
+                else:
+                    logger.error(f"Campaign email failed uid={uid}: {result['error']}")
+                    failed += 1
             except Exception as e:
-                logger.error(f"Campaign email failed uid={uid}: {e}")
+                logger.error(f"Campaign email exception uid={uid}: {e}")
                 failed += 1
 
-        campaign.sent_count = sent
+        campaign.sent_count   = sent
         campaign.failed_count = failed
-        campaign.status = 'sent'
-        campaign.sent_at = datetime.utcnow()
+        campaign.status       = 'sent'
+        campaign.sent_at      = datetime.utcnow()
         db.session.commit()
+
