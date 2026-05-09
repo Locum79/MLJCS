@@ -2,6 +2,7 @@ import logging
 import math
 import time
 import threading
+import queue
 from datetime import datetime, timedelta
 from typing import List, Optional
 from app.services.email.jobs import send_certificate_job, send_campaign_job
@@ -16,18 +17,37 @@ RETRYING   = 'retrying'
 CANCELLED  = 'cancelled'
 SCHEDULED  = 'scheduled'
 
-def run_in_background(func, delay_seconds=0, **kwargs):
-    def wrapper():
+_task_queue = queue.Queue()
+
+def _worker():
+    while True:
+        task = _task_queue.get()
+        if task is None:
+            break
+        
+        delay_seconds = task.get('delay_seconds', 0)
         if delay_seconds > 0:
             time.sleep(delay_seconds)
+            
+        func = task['func']
+        kwargs = task['kwargs']
+        
         try:
             func(**kwargs)
         except Exception as e:
             logger.error(f"Background task failed: {e}")
+        finally:
+            _task_queue.task_done()
 
-    thread = threading.Thread(target=wrapper)
-    thread.daemon = True
-    thread.start()
+_worker_thread = threading.Thread(target=_worker, daemon=True)
+_worker_thread.start()
+
+def run_in_background(func, delay_seconds=0, **kwargs):
+    _task_queue.put({
+        'func': func,
+        'delay_seconds': delay_seconds,
+        'kwargs': kwargs
+    })
 
 def enqueue_certificate(
     user_id: int,
