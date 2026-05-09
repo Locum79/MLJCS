@@ -13,11 +13,18 @@ logger = logging.getLogger(__name__)
 
 def _smtp_connection():
     cfg = current_app.config
-    server = smtplib.SMTP(cfg['MAIL_SERVER'], cfg['MAIL_PORT'], timeout=30)
-    server.ehlo()
-    if cfg.get('MAIL_USE_TLS', True):
-        server.starttls()
+    host = cfg['MAIL_SERVER']
+    port = cfg['MAIL_PORT']
+    
+    if cfg.get('MAIL_USE_SSL', False):
+        server = smtplib.SMTP_SSL(host, port, timeout=30)
+    else:
+        server = smtplib.SMTP(host, port, timeout=30)
         server.ehlo()
+        if cfg.get('MAIL_USE_TLS', True):
+            server.starttls()
+            server.ehlo()
+    
     server.login(cfg['MAIL_USERNAME'], cfg['MAIL_PASSWORD'])
     return server
 

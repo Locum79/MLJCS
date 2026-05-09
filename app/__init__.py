@@ -20,6 +20,16 @@ def create_app():
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     migrate.init_app(app, db)
+    
+    with app.app_context():
+        if 'sqlite' in app.config['SQLALCHEMY_DATABASE_URI']:
+            from sqlalchemy import event
+            @event.listens_for(db.engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
 
 
     from app.routes import auth, registration, certificates
