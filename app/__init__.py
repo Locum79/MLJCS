@@ -20,7 +20,11 @@ def create_app():
     login_manager.login_view = 'auth.login'
     migrate.init_app(app, db)
 
-    app.redis = redis.from_url(app.config['REDIS_URL'])
+    redis_url = app.config.get('REDIS_URL', 'redis://localhost:6379')
+    if os.environ.get('RAILWAY_ENVIRONMENT') and 'localhost' in redis_url:
+        app.logger.warning("REDIS_URL is pointing to localhost in a Railway environment! Check your environment variables.")
+    
+    app.redis = redis.from_url(redis_url)
     app.task_queue = Queue('certificates', connection=app.redis)
 
     from app.routes import auth, registration, certificates
