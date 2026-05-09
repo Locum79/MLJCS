@@ -1,7 +1,10 @@
 import logging
 import math
+import time
+import threading
 from datetime import datetime, timedelta
 from typing import List, Optional
+from app.services.email.jobs import send_certificate_job, send_campaign_job
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +16,18 @@ RETRYING   = 'retrying'
 CANCELLED  = 'cancelled'
 SCHEDULED  = 'scheduled'
 
+def run_in_background(func, delay_seconds=0, **kwargs):
+    def wrapper():
+        if delay_seconds > 0:
+            time.sleep(delay_seconds)
+        try:
+            func(**kwargs)
+        except Exception as e:
+            logger.error(f"Background task failed: {e}")
+
+    thread = threading.Thread(target=wrapper)
+    thread.daemon = True
+    thread.start()
 
 def enqueue_certificate(
     user_id: int,
@@ -20,7 +35,6 @@ def enqueue_certificate(
     draft_id: Optional[int] = None,
     send_rate: int = 15,
 ) -> str:
-    from flask import current_app
     from app.models import db, EmailLog, User
 
     user = db.session.get(User, user_id)
@@ -39,16 +53,14 @@ def enqueue_certificate(
     db.session.add(log)
     db.session.commit()
 
-    current_app.task_queue.enqueue(
-        'app.services.email.jobs.send_certificate_job',
+    run_in_background(
+        send_certificate_job,
         log_id=log.id,
         user_id=user_id,
         cert_type_id=cert_type_id,
-        draft_id=draft_id,
-        job_timeout=300,
+        draft_id=draft_id
     )
     return str(log.id)
-
 
 def enqueue_batch(
     user_ids: List[int],
@@ -56,7 +68,6 @@ def enqueue_batch(
     draft_id: Optional[int],
     send_rate: int = 15,
 ) -> int:
-    from flask import current_app
     from app.models import db, EmailLog, User
 
     delay_seconds = 60.0 / max(send_rate, 1)
@@ -79,32 +90,20 @@ def enqueue_batch(
         db.session.add(log)
         db.session.flush()
 
-        delay = timedelta(seconds=math.floor(i * delay_seconds))
-        if delay.total_seconds() > 0:
-            current_app.task_queue.enqueue_in(
-                delay,
-                'app.services.email.jobs.send_certificate_job',
-                log_id=log.id,
-                user_id=uid,
-                cert_type_id=cert_type_id,
-                draft_id=draft_id,
-                job_timeout=300,
-            )
-        else:
-            current_app.task_queue.enqueue(
-                'app.services.email.jobs.send_certificate_job',
-                log_id=log.id,
-                user_id=uid,
-                cert_type_id=cert_type_id,
-                draft_id=draft_id,
-                job_timeout=300,
-            )
+        delay = math.floor(i * delay_seconds)
+        run_in_background(
+            send_certificate_job,
+            delay_seconds=delay,
+            log_id=log.id,
+            user_id=uid,
+            cert_type_id=cert_type_id,
+            draft_id=draft_id
+        )
         queued += 1
 
     db.session.commit()
-    logger.info(f"Queued {queued} certificate emails (rate={send_rate}/min)")
+    logger.info(f"Enqueued {queued} certificate emails (rate={send_rate}/min)")
     return queued
-
 
 def enqueue_campaign_batch(
     campaign_id: int,
@@ -113,7 +112,6 @@ def enqueue_campaign_batch(
     send_rate: int = 15,
     scheduled_at: Optional[datetime] = None,
 ) -> int:
-    from flask import current_app
     from app.models import db, EmailLog, User
 
     delay_seconds = 60.0 / max(send_rate, 1)
@@ -139,35 +137,22 @@ def enqueue_campaign_batch(
         db.session.add(log)
         db.session.flush()
 
-        total_delay = timedelta(seconds=math.floor(base_delay + i * delay_seconds))
-        if total_delay.total_seconds() > 0:
-            current_app.task_queue.enqueue_in(
-                total_delay,
-                'app.services.email.jobs.send_campaign_job',
-                log_id=log.id,
-                user_id=uid,
-                draft_id=draft_id,
-                campaign_id=campaign_id,
-                job_timeout=120,
-            )
-        else:
-            current_app.task_queue.enqueue(
-                'app.services.email.jobs.send_campaign_job',
-                log_id=log.id,
-                user_id=uid,
-                draft_id=draft_id,
-                campaign_id=campaign_id,
-                job_timeout=120,
-            )
+        total_delay = math.floor(base_delay + i * delay_seconds)
+        run_in_background(
+            send_campaign_job,
+            delay_seconds=total_delay,
+            log_id=log.id,
+            user_id=uid,
+            draft_id=draft_id,
+            campaign_id=campaign_id
+        )
         queued += 1
 
     db.session.commit()
-    logger.info(f"Queued {queued} campaign emails (rate={send_rate}/min)")
+    logger.info(f"Enqueued {queued} campaign emails (rate={send_rate}/min)")
     return queued
 
-
 def retry_failed(log_ids: List[int]) -> int:
-    from flask import current_app
     from app.models import db, EmailLog
 
     retried = 0
@@ -180,25 +165,22 @@ def retry_failed(log_ids: List[int]) -> int:
         db.session.flush()
 
         if log.email_type == 'certificate':
-            current_app.task_queue.enqueue(
-                'app.services.email.jobs.send_certificate_job',
+            run_in_background(
+                send_certificate_job,
                 log_id=log.id,
                 user_id=log.user_id,
                 cert_type_id=log.cert_type_id,
-                draft_id=log.draft_id,
-                job_timeout=300,
+                draft_id=log.draft_id
             )
         else:
-            current_app.task_queue.enqueue(
-                'app.services.email.jobs.send_campaign_job',
+            run_in_background(
+                send_campaign_job,
                 log_id=log.id,
                 user_id=log.user_id,
                 draft_id=log.draft_id,
-                campaign_id=log.campaign_id,
-                job_timeout=120,
+                campaign_id=log.campaign_id
             )
         retried += 1
 
     db.session.commit()
     return retried
-
