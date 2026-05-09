@@ -203,6 +203,8 @@ code.cert-id{font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:4px
   <button class="nav-btn" onclick="nav('campaigns')" id="nav-campaigns"><span class="icon">📢</span>Campaigns</button>
   <div class="sidebar-section">System</div>
   <button class="nav-btn" onclick="nav('audit')" id="nav-audit"><span class="icon">📋</span>Audit Log</button>
+  <button class="nav-btn" onclick="nav('email')" id="nav-email"><span class="icon">📨</span>Email Logs</button>
+  <button class="nav-btn" onclick="nav('dns')" id="nav-dns"><span class="icon">🔐</span>DNS Guide</button>
   <button class="nav-btn" onclick="nav('settings')" id="nav-settings"><span class="icon">⚙️</span>Settings</button>
 </nav>
 
@@ -340,6 +342,54 @@ code.cert-id{font-size:10px;background:#f3f4f6;padding:2px 6px;border-radius:4px
     </div>
     <div class="form-group"><label>Verification Base URL</label><input id="sVerifyUrl" placeholder="https://yourapp.railway.app"><div class="field-hint">Used to build QR verification links: {base_url}/verify/{cert_id}</div></div>
     <button class="btn btn-g" onclick="saveSettings()">Save Settings</button>
+  </div>
+</div>
+
+
+<!-- ═══════ EMAIL LOGS ═══════ -->
+<div class="panel" id="panel-email">
+  <div class="stat-grid" id="emailStats" style="margin-bottom:16px"></div>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card-header">
+      <div class="card-title">📨 Email Dispatch Log</div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <select id="logStatusFilter" onchange="loadEmailLogs()" style="padding:5px 9px;border:1.5px solid var(--border);border-radius:6px;font-size:12px">
+          <option value="">All</option>
+          <option value="sent">Sent</option>
+          <option value="failed">Failed</option>
+          <option value="pending">Pending</option>
+          <option value="processing">Processing</option>
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="loadEmailLogs()">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="tbl-wrap">
+      <table id="emailLogTable" class="display" style="width:100%">
+        <thead><tr>
+          <th><input type="checkbox" id="logSelAll" onchange="toggleLogSel()"></th>
+          <th>Recipient</th><th>Type</th><th>Status</th>
+          <th>Retries</th><th>Reason</th><th>Sent At</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">🔁 Failed — Retry Panel</div>
+      <button class="btn btn-amber btn-sm" onclick="retrySelected()">Retry Selected</button>
+    </div>
+    <div id="failedList" style="font-size:13px;color:var(--muted)">Loading…</div>
+  </div>
+</div>
+
+<!-- ═══════ DNS GUIDE ═══════ -->
+<div class="panel" id="panel-dns">
+  <div class="card">
+    <div class="card-title" style="margin-bottom:4px">🔐 Email Authentication — DNS Setup</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">Configure these records in your DNS panel to ensure reliable email delivery and avoid spam filtering.</p>
+    <div id="dnsRecords"></div>
+    <div id="dnsNotes" style="margin-top:16px;background:#f8f9fa;border-radius:8px;padding:14px"></div>
   </div>
 </div>
 
@@ -1137,6 +1187,169 @@ async function saveSettings(){
     verify_base_url:document.getElementById('sVerifyUrl').value.trim(),
   })});
   toast('✅ '+d.message);
+}
+
+
+// ── EMAIL LOGS ──────────────────────────────────────────────────────────────
+let dtEmailLog = null;
+let emailLogData = [];
+
+async function loadEmailLogs(){
+  const status = document.getElementById('logStatusFilter').value;
+  const url = '/api/email/logs'+(status?'?status='+status:'');
+  const res = await api(url.replace('api(','fetch('));
+  const data = await (await fetch(url)).json();
+  emailLogData = data.logs || [];
+
+  // Stats
+  const stats = await (await fetch('/api/email/stats')).json();
+  document.getElementById('emailStats').innerHTML = [
+    ['Total',stats.total,'var(--text)'],
+    ['Sent',stats.sent,'var(--g)'],
+    ['Failed',stats.failed,'var(--red)'],
+    ['Pending',stats.pending,'var(--amber)'],
+    ['Success %',stats.success_rate+'%','var(--blue)'],
+  ].map(([l,v,c])=>`<div class="stat-card"><div class="stat-num" style="color:${c}">${v}</div><div class="stat-label">${l}</div></div>`).join('');
+
+  if(dtEmailLog){dtEmailLog.destroy();dtEmailLog=null}
+  dtEmailLog=$('#emailLogTable').DataTable({
+    data: emailLogData,
+    pageLength: 25,
+    columns:[
+      {data:'id',render:()=>'<input type="checkbox" class="lcb">',orderable:false,width:'32px'},
+      {data:'recipient_email',render:(d,t,r)=>`<div style="font-size:12px">${r.recipient_name||''}</div><div style="font-size:11px;color:var(--muted)">${d}</div>`},
+      {data:'email_type',render:d=>`<span class="dc-mode ${d==='certificate'?'mode-a':'mode-b'}">${d}</span>`},
+      {data:'status',render:d=>`<span class="status-badge s-${d==='sent'?'sent':d==='failed'?'rejected':d==='pending'||d==='processing'?'sending':'registered'}">${d}</span>`},
+      {data:'retry_count',render:d=>d>0?`<span style="color:var(--amber);font-size:12px">${d}x</span>`:'—'},
+      {data:'failed_reason',render:d=>d?`<span style="font-size:11px;color:var(--red)">${d.slice(0,60)}</span>`:'—'},
+      {data:'sent_at',render:d=>`<span style="font-size:11px;color:var(--muted)">${d||'—'}</span>`},
+    ],
+    language:{emptyTable:'No email logs yet'}
+  });
+
+  // Failed list
+  const failed = await (await fetch('/api/email/failed')).json();
+  const fl = document.getElementById('failedList');
+  if(!failed.length){fl.innerHTML='<p style="padding:12px 0">No failed emails.</p>';return}
+  fl.innerHTML=`<table style="width:100%;font-size:12px;border-collapse:collapse">
+    <thead><tr style="background:var(--gl)">
+      <th style="padding:7px;text-align:left">Recipient</th>
+      <th>Reason</th><th>Retries</th><th>Date</th>
+      <th><button class="btn btn-xs btn-amber" onclick="retryAllFailed()">Retry All</button></th>
+    </tr></thead>
+    <tbody>${failed.map(f=>`<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:7px"><div>${f.recipient_name||''}</div><div style="color:var(--muted)">${f.recipient_email}</div></td>
+      <td style="color:var(--red);font-size:11px">${f.failed_reason.slice(0,60)}</td>
+      <td style="text-align:center">${f.retry_count}</td>
+      <td style="color:var(--muted)">${f.created_at}</td>
+      <td><button class="btn btn-xs btn-outline" onclick="retryOne(${f.id})">Retry</button></td>
+    </tr>`).join('')}
+    </tbody></table>`;
+}
+
+function toggleLogSel(){$('.lcb').prop('checked',document.getElementById('logSelAll').checked)}
+
+function getSelLogIds(){
+  const ids=[];
+  $('.lcb:checked').each(function(){
+    const row=dtEmailLog.row($(this).closest('tr')).data();
+    if(row)ids.push(row.id);
+  });
+  return ids;
+}
+
+async function retrySelected(){
+  const ids=getSelLogIds();
+  if(!ids.length){toast('Select failed emails first');return}
+  const d=await api('/api/email/retry',{method:'POST',body:JSON.stringify({log_ids:ids})});
+  toast('🔁 '+d.message); loadEmailLogs();
+}
+
+async function retryOne(id){
+  const d=await api('/api/email/retry',{method:'POST',body:JSON.stringify({log_ids:[id]})});
+  toast('🔁 '+d.message); loadEmailLogs();
+}
+
+async function retryAllFailed(){
+  const failed=await(await fetch('/api/email/failed')).json();
+  const ids=failed.map(f=>f.id);
+  if(!ids.length){toast('No failed emails');return}
+  const d=await api('/api/email/retry',{method:'POST',body:JSON.stringify({log_ids:ids})});
+  toast('🔁 '+d.message); loadEmailLogs();
+}
+
+// ── DNS GUIDE ───────────────────────────────────────────────────────────────
+async function loadDnsGuide(){
+  const data=await(await fetch('/api/email/dns-guide')).json();
+  const rec=document.getElementById('dnsRecords');
+  rec.innerHTML=data.records.map(r=>`
+    <div style="background:#f8f9fa;border-radius:8px;padding:14px;margin-bottom:12px;border-left:4px solid var(--g)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="background:var(--g);color:#fff;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:800">${r.type}</span>
+        <code style="font-size:12px;background:#e5e7eb;padding:2px 8px;border-radius:4px">${r.name}</code>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">${r.description}</div>
+      <div style="background:#1a1a2e;color:#a3e635;padding:8px 12px;border-radius:6px;font-family:monospace;font-size:11px;word-break:break-all">${r.value}</div>
+    </div>`).join('');
+
+  document.getElementById('dnsNotes').innerHTML=
+    '<div style="font-size:12px;font-weight:700;margin-bottom:8px;color:var(--text)">📌 Setup Notes</div>'+
+    data.notes.map(n=>`<div style="font-size:12px;color:var(--muted);padding:3px 0">• ${n}</div>`).join('');
+}
+
+// Hook DNS panel nav
+const _origNav = nav;
+// Override nav to load DNS when needed
+const navBtn = document.getElementById;
+document.querySelectorAll('.nav-btn').forEach(b=>{
+  if(b.getAttribute('onclick')==='nav("dns")' || b.textContent.includes('DNS')){
+    b.setAttribute('onclick','nav("dns");loadDnsGuide()');
+  }
+  if(b.getAttribute('onclick')==='nav("email")' || b.textContent.includes('Email Logs')){
+    b.setAttribute('onclick','nav("email");loadEmailLogs()');
+  }
+});
+
+// Patch nav() to auto-load panels
+const _nav = nav;
+function nav(name){
+  _nav(name);
+  if(name==='email') loadEmailLogs();
+  if(name==='dns')   loadDnsGuide();
+}
+
+// Also patch send flow to use new email endpoint
+async function requestConfirmation(){
+  const ids=sendAllMode?[]:getSelIds();
+  const payload={
+    user_ids:ids, cert_type_id:activeCT.id,
+    draft_id:document.getElementById('sendDraftSel').value||null,
+    confirmed:false,
+    send_rate:15,
+  };
+  const endpoint=sendAllMode?'/api/email/send-all-approved':'/api/email/send';
+  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
+  if(!d.needs_confirmation){toast(d.message||d.error);return}
+  confirmData=d;
+  document.getElementById('cfCount').textContent=d.recipient_count;
+  document.getElementById('cfCourse').textContent=d.course+' ('+d.period+')';
+  document.getElementById('cfSender').textContent=d.sender;
+  document.getElementById('cfCerts').textContent=d.cert_count+' PDF(s) · ~'+d.est_minutes+' min at '+d.send_rate+'/min';
+  showStep(2);
+}
+
+async function confirmSend(){
+  const ids=sendAllMode?[]:getSelIds();
+  const payload={
+    user_ids:ids, cert_type_id:activeCT.id,
+    draft_id:document.getElementById('sendDraftSel').value||null,
+    confirmed:true, send_rate:15,
+  };
+  const endpoint=sendAllMode?'/api/email/send-all-approved':'/api/email/send';
+  const d=await api(endpoint,{method:'POST',body:JSON.stringify(payload)});
+  closeModal('sendModal');
+  toast('📧 '+d.message);
+  loadUsers();
 }
 
 // ── INIT ────────────────────────────────────────────────────────────────────

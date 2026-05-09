@@ -24,9 +24,11 @@ def create_app():
     app.task_queue = Queue('certificates', connection=app.redis)
 
     from app.routes import auth, registration, certificates
+    from app.routes import email_routes
     app.register_blueprint(auth.bp)
     app.register_blueprint(registration.bp)
     app.register_blueprint(certificates.bp)
+    app.register_blueprint(email_routes.bp)
 
     with app.app_context():
         try:

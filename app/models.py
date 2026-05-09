@@ -92,6 +92,7 @@ class CertArchive(db.Model):
     email = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(20), default='issued')
     raw_binary = db.Column(db.LargeBinary, nullable=True)
+    pdf_binary = db.Column(db.LargeBinary, nullable=True)  # cached generated PDF
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -144,3 +145,25 @@ class AuditLog(db.Model):
     performed_by = db.Column(db.String(100))
     details = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class EmailLog(db.Model):
+    """
+    Permanent record of every email dispatch attempt.
+    Tracks status lifecycle: pending → processing → sent/failed.
+    """
+    __tablename__ = 'email_logs'
+    id               = db.Column(db.Integer, primary_key=True)
+    recipient_email  = db.Column(db.String(255), nullable=False)
+    recipient_name   = db.Column(db.String(300), nullable=True)
+    email_type       = db.Column(db.String(30), default='certificate')  # certificate / campaign
+    status           = db.Column(db.String(20), default='pending')
+    user_id          = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    cert_type_id     = db.Column(db.Integer, db.ForeignKey('certificate_types.id', ondelete='SET NULL'), nullable=True)
+    draft_id         = db.Column(db.Integer, db.ForeignKey('email_drafts.id', ondelete='SET NULL'), nullable=True)
+    campaign_id      = db.Column(db.Integer, db.ForeignKey('campaigns.id', ondelete='SET NULL'), nullable=True)
+    failed_reason    = db.Column(db.Text, nullable=True)
+    retry_count      = db.Column(db.Integer, default=0)
+    started_at       = db.Column(db.DateTime, nullable=True)
+    sent_at          = db.Column(db.DateTime, nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
