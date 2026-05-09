@@ -15,7 +15,8 @@ def create_app():
 
     db.init_app(app)
     
-    os.makedirs(os.path.join(app.root_path, '../uploads'), exist_ok=True)
+    uploads_dir = os.path.join(os.path.abspath(os.path.dirname(app.root_path)), 'uploads')
+    os.makedirs(uploads_dir, exist_ok=True)
     login_manager.init_app(app)
     login_manager.login_view = 'auth.login'
     migrate.init_app(app, db)
