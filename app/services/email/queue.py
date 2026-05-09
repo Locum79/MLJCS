@@ -1,8 +1,3 @@
-"""
-Email queue manager.
-Creates EmailLog records and enqueues RQ jobs with rate limiting support.
-All email dispatches go through here — never enqueue worker tasks directly.
-"""
 import logging
 import math
 from datetime import datetime, timedelta

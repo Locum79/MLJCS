@@ -21,7 +21,6 @@ def submit_registration(token):
     if not first_name or not surname or not email:
         return jsonify({'error': 'First name, surname and email are required'}), 400
 
-    # Generate certificate ID immediately at registration
     seq     = next_sequence(cert_type)
     cert_id = generate_cert_id(cert_type.course_code, seq, datetime.utcnow())
 

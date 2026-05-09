@@ -1,6 +1,3 @@
-"""
-Core certificate routes: library, participants, send, archive.
-"""
 from flask import Blueprint, render_template, request, jsonify, current_app
 from flask_login import login_required, current_user
 from app.models import (db, User, CertificateType, AuditLog,
@@ -13,9 +10,6 @@ import uuid, os, json, io, csv
 bp = Blueprint('certificates', __name__)
 UPLOAD_FOLDER = 'uploads'
 
-
-# ── Dashboard ─────────────────────────────────────────────────────────────────
-
 @bp.route('/admin')
 @login_required
 def dashboard():
@@ -25,9 +19,6 @@ def dashboard():
     drafts = EmailDraft.query.order_by(EmailDraft.updated_at.desc()).all()
     return render_template('admin/dashboard.html',
                            cert_types=cert_types, org=org, drafts=drafts)
-
-
-# ── Org Settings ──────────────────────────────────────────────────────────────
 
 @bp.route('/api/org', methods=['GET'])
 @login_required
@@ -55,9 +46,6 @@ def save_org():
             setattr(org, field, data[field])
     db.session.commit()
     return jsonify({'message': 'Settings saved'})
-
-
-# ── Certificate Library ───────────────────────────────────────────────────────
 
 @bp.route('/api/cert-types', methods=['GET'])
 @login_required
@@ -93,7 +81,6 @@ def create_cert_type():
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
 
-    # Default overlay coords
     overlay_coords = {
         "name_x": 0, "name_y": 320, "name_w": 500, "name_h": 50,
         "name_font_size": 30, "name_align": "center",
@@ -108,7 +95,6 @@ def create_cert_type():
     except Exception:
         pass
 
-    # Run OCR analysis — failures must not block the upload
     try:
         ocr_result = analyze_template(filepath, ext)
     except Exception as ocr_err:
@@ -172,9 +158,6 @@ def delete_cert_type(ct_id):
     db.session.commit()
     return jsonify({'message': 'Removed from library'})
 
-
-# ── Template field mapper re-run OCR ─────────────────────────────────────────
-
 @bp.route('/api/cert-types/<int:ct_id>/analyze', methods=['POST'])
 @login_required
 def reanalyze_template(ct_id):
@@ -185,12 +168,9 @@ def reanalyze_template(ct_id):
     return jsonify({'regions': ct.ocr_regions, 'message': result.get('message')})
 
 
-# ── Certificate Preview ───────────────────────────────────────────────────────
-
 @bp.route('/api/cert-types/<int:ct_id>/preview', methods=['POST'])
 @login_required
 def preview_certificate(ct_id):
-    """Generate a preview PDF with sample data or provided data."""
     from flask import send_file
     from app.engine.pdf_processor import generate_personalized_pdf
     ct = CertificateType.query.get_or_404(ct_id)
@@ -200,25 +180,31 @@ def preview_certificate(ct_id):
     issue_date = data.get('issue_date', datetime.utcnow().strftime('%d %B %Y'))
     include_qr = data.get('include_qr', True)
 
-    pdf_bytes = generate_personalized_pdf(
-        master_pdf_path=ct.master_pdf_path,
-        overlay_coords=ct.overlay_coords,
-        full_name=full_name,
-        certificate_id=cert_id,
-        issuance_date=issue_date,
-        include_qr=include_qr,
-        cert_name=ct.name,
-        master_file_type=ct.master_file_type or 'pdf',
-    )
+    if not os.path.exists(ct.master_pdf_path):
+        return jsonify({'error': 'Master certificate file not found on server. Please re-upload the template.'}), 404
+
+    try:
+        pdf_bytes = generate_personalized_pdf(
+            master_pdf_path=ct.master_pdf_path,
+            overlay_coords=ct.overlay_coords,
+            full_name=full_name,
+            certificate_id=cert_id,
+            issuance_date=issue_date,
+            include_qr=include_qr,
+            cert_name=ct.name,
+            master_file_type=ct.master_file_type or 'pdf',
+        )
+    except FileNotFoundError:
+        return jsonify({'error': 'Master certificate file missing.'}), 404
+    except Exception as e:
+        return jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500
+
     return send_file(
         io.BytesIO(pdf_bytes),
         mimetype='application/pdf',
         as_attachment=False,
         download_name=f"preview_{ct_id}.pdf"
     )
-
-
-# ── Participants ──────────────────────────────────────────────────────────────
 
 @bp.route('/api/users/<int:cert_type_id>')
 @login_required
@@ -279,7 +265,6 @@ def add_user():
 @bp.route('/api/users/import', methods=['POST'])
 @login_required
 def import_users():
-    """CSV or XLSX bulk import."""
     import openpyxl
     ct_id = request.form.get('cert_type_id')
     ct = CertificateType.query.get_or_404(ct_id)
@@ -305,7 +290,6 @@ def import_users():
 
     imported = skipped = 0
     for row in rows:
-        # Flexible column name mapping
         email = str(row.get('email') or row.get('Email') or '').strip().lower()
         first_name = str(row.get('first_name') or row.get('First Name') or row.get('firstname') or '').strip()
         surname = str(row.get('surname') or row.get('last_name') or row.get('Last Name') or row.get('lastname') or '').strip()
@@ -313,7 +297,6 @@ def import_users():
             skipped += 1
             continue
 
-        # Split full_name if individual names not provided
         if not first_name and not surname:
             full = str(row.get('full_name') or row.get('name') or '')
             parts = full.split()
@@ -379,10 +362,6 @@ def reject_users():
 @bp.route('/api/send', methods=['POST'])
 @login_required
 def send_certificates():
-    """
-    Batch dispatch with safety confirmation.
-    Admin must have already seen the confirmation modal client-side.
-    """
     data = request.json or {}
     user_ids = data['user_ids']
     cert_type_id = data['cert_type_id']
@@ -390,7 +369,6 @@ def send_certificates():
     confirmed = data.get('confirmed', False)
 
     if not confirmed:
-        # Return preview info for confirmation modal
         users = User.query.filter(
             User.id.in_(user_ids), User.status == 'approved').all()
         ct = CertificateType.query.get(cert_type_id)
@@ -508,16 +486,12 @@ def delete_users():
 @bp.route('/api/users/archive', methods=['POST'])
 @login_required
 def archive_users():
-    """Move to storage — archived for campaign use, removed from active list."""
     user_ids = request.json['user_ids']
     User.query.filter(User.id.in_(user_ids)).update(
         {'archived_at': datetime.utcnow(), 'status': 'archived'},
         synchronize_session=False)
     db.session.commit()
     return jsonify({'message': f'{len(user_ids)} participants archived'})
-
-
-# ── Email Drafts ──────────────────────────────────────────────────────────────
 
 @bp.route('/api/drafts', methods=['GET'])
 @login_required
@@ -572,9 +546,6 @@ def delete_draft(did):
     db.session.commit()
     return jsonify({'message': 'Draft deleted'})
 
-
-# ── Campaigns ─────────────────────────────────────────────────────────────────
-
 @bp.route('/api/campaigns', methods=['GET'])
 @login_required
 def list_campaigns():
@@ -623,17 +594,11 @@ def create_campaign():
 
     return jsonify({'id': campaign.id, 'message': 'Campaign created'})
 
-
-# ── LMS Webhook Endpoints ─────────────────────────────────────────────────────
-
 @bp.route('/api/lms/completion', methods=['POST'])
 def lms_completion():
-    """Receive completion event from any LMS via webhook."""
     data = request.json or {}
-    # Map LMS payload to participant fields
     email = (data.get('email') or data.get('learner_email') or '').strip().lower()
     full_name = (data.get('full_name') or data.get('name') or '').strip()
-    course = (data.get('course') or data.get('course_name') or '').strip()
     score = data.get('score') or data.get('grade')
     completion = data.get('completion_status') or data.get('status') or 'completed'
     token = data.get('registration_token') or request.args.get('token', '')
@@ -641,22 +606,31 @@ def lms_completion():
     if not email or not token:
         return jsonify({'error': 'email and registration_token required'}), 400
 
-    ct = CertificateType.query.filter_by(
-        registration_token=token, is_active=True).first()
+    ct = CertificateType.query.filter_by(registration_token=token, is_active=True).first()
     if not ct:
         return jsonify({'error': 'Invalid token'}), 404
 
-    parts = full_name.split()
-    first_name = parts[0] if parts else email.split('@')[0]
-    surname = parts[-1] if len(parts) > 1 else ''
+    name_parts = full_name.split()
+    if len(name_parts) == 1:
+        first_name = name_parts[0]
+        surname = ""
+    elif len(name_parts) > 1:
+        first_name = name_parts[0]
+        surname = " ".join(name_parts[1:])
+    else:
+        first_name = email.split('@')[0]
+        surname = ""
 
     seq = next_sequence(ct)
     cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
 
     user = User(
-        first_name=first_name, surname=surname,
-        email=email, certificate_type_id=ct.id,
-        certificate_id=cert_id, status='registered',
+        first_name=first_name,
+        surname=surname,
+        email=email,
+        certificate_type_id=ct.id,
+        certificate_id=cert_id,
+        status='registered',
         score=float(score) if score else None,
         completion_status=completion,
         source='lms',
@@ -673,13 +647,11 @@ def lms_completion():
 
 @bp.route('/api/lms/users', methods=['POST'])
 def lms_users():
-    """Bulk user sync from LMS."""
     data = request.json or {}
     token = data.get('registration_token') or request.args.get('token', '')
     users_data = data.get('users', [])
 
-    ct = CertificateType.query.filter_by(
-        registration_token=token, is_active=True).first()
+    ct = CertificateType.query.filter_by(registration_token=token, is_active=True).first()
     if not ct:
         return jsonify({'error': 'Invalid token'}), 404
 
@@ -689,14 +661,27 @@ def lms_users():
         if not email:
             continue
         full = (u.get('full_name') or u.get('name') or '').strip()
-        parts = full.split()
+        name_parts = full.split()
+        if len(name_parts) == 1:
+            f_name = name_parts[0]
+            s_name = ""
+        elif len(name_parts) > 1:
+            f_name = name_parts[0]
+            s_name = " ".join(name_parts[1:])
+        else:
+            f_name = email.split('@')[0]
+            s_name = ""
+
         seq = next_sequence(ct)
         cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
+
         user = User(
-            first_name=parts[0] if parts else email.split('@')[0],
-            surname=parts[-1] if len(parts) > 1 else '',
-            email=email, certificate_type_id=ct.id,
-            certificate_id=cert_id, status='registered',
+            first_name=f_name,
+            surname=s_name,
+            email=email,
+            certificate_type_id=ct.id,
+            certificate_id=cert_id,
+            status='registered',
             source='lms',
         )
         db.session.add(user)
@@ -704,9 +689,6 @@ def lms_users():
 
     db.session.commit()
     return jsonify({'message': f'{imported} users synced'})
-
-
-# ── QR Verification (public) ──────────────────────────────────────────────────
 
 @bp.route('/verify/<cert_id>')
 def verify_cert(cert_id):
@@ -727,9 +709,6 @@ def verify_cert(cert_id):
 
 
 # unsubscribe route lives in email_routes.py to avoid duplicate endpoint
-
-# ── Archive Recovery ──────────────────────────────────────────────────────────
-
 @bp.route('/api/archive/<cert_id>')
 @login_required
 def get_archive(cert_id):
@@ -743,9 +722,6 @@ def get_archive(cert_id):
         except Exception:
             pass
     return jsonify(data)
-
-
-# ── Audit Log ─────────────────────────────────────────────────────────────────
 
 @bp.route('/api/audit')
 @login_required

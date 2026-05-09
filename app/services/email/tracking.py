@@ -1,13 +1,8 @@
-"""
-Email tracking and analytics queries.
-Read-only helpers used by routes to build dashboard stats.
-"""
 from typing import Dict, List
 from datetime import datetime, timedelta
 
 
 def summary_stats(cert_type_id: int = None) -> Dict:
-    """Return aggregate email log stats."""
     from app.models import EmailLog, db
     q = EmailLog.query
     if cert_type_id:
@@ -27,7 +22,6 @@ def summary_stats(cert_type_id: int = None) -> Dict:
 
 
 def failed_logs(limit: int = 100) -> List[Dict]:
-    """Return recent failed email logs for admin retry panel."""
     from app.models import EmailLog
     logs = EmailLog.query.filter(
         EmailLog.status.in_(['failed', 'bounced'])
@@ -45,7 +39,6 @@ def failed_logs(limit: int = 100) -> List[Dict]:
 
 
 def campaign_stats(campaign_id: int) -> Dict:
-    """Stats for a specific campaign."""
     from app.models import EmailLog
     logs = EmailLog.query.filter_by(campaign_id=campaign_id).all()
     total   = len(logs)

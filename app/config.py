@@ -6,7 +6,6 @@ load_dotenv()
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
     
-    # Fix Railway's postgres:// to postgresql://
     database_url = os.environ.get('DATABASE_URL', 'sqlite:///certifystack.db')
     if database_url and database_url.startswith('postgres://'):
         database_url = database_url.replace('postgres://', 'postgresql://', 1)

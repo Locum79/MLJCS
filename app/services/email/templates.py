@@ -1,12 +1,7 @@
-"""
-Jinja2-based HTML + plain text email template engine.
-Supports smart placeholder rendering with fallback for missing keys.
-"""
 from jinja2 import Environment, BaseLoader, Undefined
 from typing import Dict, Optional
 import re
 
-# All supported template variables
 TEMPLATE_VARS = {
     'full_name':          'Recipient full name',
     'first_name':         'Recipient first name',
@@ -18,7 +13,6 @@ TEMPLATE_VARS = {
     'unsubscribe_link':   'Unsubscribe URL (campaigns only)',
 }
 
-# Default certificate dispatch email
 DEFAULT_CERT_SUBJECT = "Your {{course_name}} Certificate — {{organization_name}}"
 
 DEFAULT_CERT_BODY = """\
@@ -41,7 +35,6 @@ Warm regards,
 {{organization_name}}\
 """
 
-# Default campaign (no attachment)
 DEFAULT_CAMPAIGN_SUBJECT = "Update from {{organization_name}}"
 
 DEFAULT_CAMPAIGN_BODY = """\
@@ -58,13 +51,11 @@ To unsubscribe from future communications: {{unsubscribe_link}}\
 
 
 class SafeDict(dict):
-    """Returns empty string for missing keys instead of raising."""
     def __missing__(self, key):
         return ''
 
 
 def _jinja_env() -> Environment:
-    """Create Jinja2 env with {{ }} delimiters matching our template syntax."""
     env = Environment(
         loader=BaseLoader(),
         variable_start_string='{{',
@@ -76,11 +67,6 @@ def _jinja_env() -> Environment:
 
 
 def render(template: str, context: Dict) -> str:
-    """
-    Render a template string with context dict.
-    Safe — missing keys produce empty string, never raises.
-    Supports both {{var}} and {var} styles.
-    """
     if not template:
         return ''
     ctx = SafeDict(context)
@@ -89,7 +75,6 @@ def render(template: str, context: Dict) -> str:
         tmpl = env.from_string(template)
         return tmpl.render(**ctx)
     except Exception:
-        # Fallback: simple string replace
         result = template
         for k, v in context.items():
             result = result.replace('{{' + k + '}}', str(v or ''))
@@ -104,7 +89,6 @@ def build_context(
     verify_base_url: str = '',
     unsubscribe_base_url: str = '',
 ) -> Dict:
-    """Build full template context from user + cert type + org objects."""
     issue_date = ''
     if user.sent_at:
         issue_date = user.sent_at.strftime('%d %B %Y')

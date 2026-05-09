@@ -1,9 +1,3 @@
-"""
-Structured Certificate ID Engine.
-Format: MLJ-{COURSE}-{YEAR}-{SEQ6}
-Example: MLJ-EMR-2026-000183
-Guarantees uniqueness per org + course + year + sequence.
-"""
 from datetime import datetime
 
 

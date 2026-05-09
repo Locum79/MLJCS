@@ -1,8 +1,3 @@
-"""
-OCR Template Analyzer.
-Scans uploaded master certificate to detect editable text regions.
-Uses PIL + pytesseract. Falls back gracefully if tesseract not installed.
-"""
 import io
 import json
 import logging
@@ -10,19 +5,17 @@ from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
-# Keyword patterns that suggest editable fields
 NAME_KEYWORDS = ['name', 'recipient', 'awarded', 'presented to', 'this certifies']
 DATE_KEYWORDS = ['date', 'issued', 'awarded on', 'day of', 'completed']
 ID_KEYWORDS = ['certificate no', 'cert id', 'id:', 'number', 'reference']
 
 
 def _pil_from_pdf(pdf_path: str):
-    """Convert first page of PDF to PIL Image."""
     try:
-        import fitz  # PyMuPDF — optional fast path
+        import fitz
         doc = fitz.open(pdf_path)
         page = doc[0]
-        mat = fitz.Matrix(2.0, 2.0)  # 2x scale for OCR quality
+        mat = fitz.Matrix(2.0, 2.0)
         pix = page.get_pixmap(matrix=mat)
         img_bytes = pix.tobytes('png')
         from PIL import Image
@@ -44,11 +37,6 @@ def _pil_from_png(png_path: str):
 
 
 def analyze_template(file_path: str, file_type: str = 'pdf') -> Dict:
-    """
-    Analyze master template. Return detected regions + page dimensions.
-    Returns dict: {width, height, regions: [{type, x, y, w, h, text, confidence}]}
-    Always returns a valid dict even if OCR fails.
-    """
     result = {
         'width': 842, 'height': 595,
         'regions': [],
@@ -62,13 +50,13 @@ def analyze_template(file_path: str, file_type: str = 'pdf') -> Dict:
 
         img = _pil_from_pdf(file_path) if file_type == 'pdf' else _pil_from_png(file_path)
         if img is None:
+            result['regions'] = _default_regions()
             return result
 
         img_w, img_h = img.size
         result['ocr_available'] = True
         result['message'] = 'OCR complete'
 
-        # Get word-level bounding boxes
         data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
 
         regions = []
@@ -87,7 +75,6 @@ def analyze_template(file_path: str, file_type: str = 'pdf') -> Dict:
             word_lower = word.lower()
             region_type = None
 
-            # Classify by keyword proximity
             for kw in NAME_KEYWORDS:
                 if kw in word_lower:
                     region_type = 'name'
@@ -104,8 +91,6 @@ def analyze_template(file_path: str, file_type: str = 'pdf') -> Dict:
                         break
 
             if region_type:
-                # Normalise to PDF coordinate space (bottom-left origin)
-                # PDF Y = page_height - image_y - word_height (approximate)
                 norm_x = round(x * 842 / img_w)
                 norm_y = round((img_h - y - h) * 595 / img_h)
                 norm_w = round(w * 842 / img_w)
@@ -122,14 +107,12 @@ def analyze_template(file_path: str, file_type: str = 'pdf') -> Dict:
                     'source': 'ocr'
                 })
 
-        # Deduplicate by type — keep highest confidence per type
         seen = {}
         for r in sorted(regions, key=lambda x: x['confidence'], reverse=True):
             if r['type'] not in seen:
                 seen[r['type']] = r
         result['regions'] = list(seen.values())
 
-        # If no regions detected, return sensible defaults
         if not result['regions']:
             result['regions'] = _default_regions()
             result['message'] = 'OCR ran but no editable fields detected — defaults applied'
@@ -147,7 +130,6 @@ def analyze_template(file_path: str, file_type: str = 'pdf') -> Dict:
 
 
 def _default_regions() -> List[Dict]:
-    """Sensible default field positions when OCR unavailable."""
     return [
         {'type': 'name',    'x': 100, 'y': 280, 'w': 400, 'h': 40, 'text': 'PARTICIPANT NAME', 'confidence': 0, 'source': 'default'},
         {'type': 'date',    'x': 100, 'y': 160, 'w': 200, 'h': 24, 'text': 'DATE',             'confidence': 0, 'source': 'default'},

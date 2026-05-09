@@ -1,7 +1,3 @@
-"""
-RQ background jobs for email dispatch.
-Each job is self-contained with its own app context.
-"""
 import logging
 import json
 from datetime import datetime
@@ -11,10 +7,6 @@ logger = logging.getLogger(__name__)
 
 def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
                           draft_id: int = None):
-    """
-    Generate PDF + send certificate email.
-    Generates cert once, persists to archive, dispatches.
-    """
     from app import create_app
     from app.models import db, User, CertificateType, EmailLog, CertArchive, OrgSettings, EmailDraft
     from app.engine.pdf_processor import generate_personalized_pdf
@@ -41,7 +33,6 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
             base_url = (org.verify_base_url or '').rstrip('/')
             verify_url = f"{base_url}/verify/{user.certificate_id}" if base_url and user.certificate_id else ''
 
-            # Generate PDF (once — check archive first)
             archive = CertArchive.query.filter_by(
                 certificate_id=user.certificate_id).first()
 
@@ -60,7 +51,6 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
                     master_file_type=cert_type.master_file_type or 'pdf',
                     verify_url=verify_url,
                 )
-                # Persist generated PDF
                 if archive:
                     archive.pdf_binary = pdf_bytes
                 else:
@@ -81,7 +71,6 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
                     ))
                 db.session.flush()
 
-            # Build context + resolve template
             ctx = build_context(user, cert_type, org, base_url, base_url)
             draft = db.session.get(EmailDraft, draft_id) if draft_id else None
             subject_tpl = (draft.subject if draft else None) or cert_type.email_subject or DEFAULT_CERT_SUBJECT
@@ -131,7 +120,6 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
 
 def send_campaign_job(log_id: int, user_id: int, draft_id: int,
                        campaign_id: int = None):
-    """Send a Mode B campaign email (no attachment)."""
     from app import create_app
     from app.models import db, User, EmailLog, EmailDraft, Campaign, OrgSettings
     from app.services.email.sender import dispatch
@@ -180,7 +168,6 @@ def send_campaign_job(log_id: int, user_id: int, draft_id: int,
                 log.status = 'failed'
                 log.failed_reason = result['error']
 
-            # Update campaign counters
             if campaign_id:
                 camp = db.session.get(Campaign, campaign_id)
                 if camp:

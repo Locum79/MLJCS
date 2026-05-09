@@ -16,14 +16,12 @@ def login():
         identifier = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
 
-        # Check hardcoded credentials first (username or email match)
         is_hardcoded = (
             identifier in (HARDCODED_USERNAME.lower(), HARDCODED_EMAIL.lower())
             and password == HARDCODED_PASSWORD
         )
 
         if is_hardcoded:
-            # Find or create the hardcoded admin in DB for flask-login session
             admin = Admin.query.filter_by(email=HARDCODED_EMAIL).first()
             if not admin:
                 admin = Admin(email=HARDCODED_EMAIL)
@@ -33,7 +31,6 @@ def login():
             login_user(admin)
             return redirect(url_for('certificates.dashboard'))
 
-        # Fall through to DB lookup (for any other admins created via setup)
         admin = Admin.query.filter(
             db.or_(
                 Admin.email == identifier,

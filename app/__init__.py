@@ -34,7 +34,7 @@ def create_app():
         try:
             db.create_all()
         except Exception:
-            pass  # Tables already exist — safe to ignore on redeploy
+            pass
 
     return app
 

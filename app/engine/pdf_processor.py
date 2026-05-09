@@ -1,8 +1,3 @@
-"""
-Intelligent Certificate Generation Engine.
-Preserves original visual integrity — overlays only editable regions.
-Supports pixel-perfect rendering, dynamic font scaling, QR embedding.
-"""
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
@@ -16,14 +11,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Try to register custom fonts if available
 _FONT_DIR = os.path.join(os.path.dirname(__file__), '../../static/fonts')
 _DEFAULT_FONT = 'Helvetica-Bold'
 _DEFAULT_FONT_REGULAR = 'Helvetica'
 
 
 def _register_fonts():
-    """Register any TTF fonts found in static/fonts/."""
     if not os.path.isdir(_FONT_DIR):
         return
     for fname in os.listdir(_FONT_DIR):
@@ -51,7 +44,6 @@ def _make_qr(data: str, size: int = 90) -> io.BytesIO:
 
 def _auto_font_size(text: str, max_width: float, max_height: float,
                     font_name: str, start_size: int = 32) -> int:
-    """Scale font down until text fits within max_width."""
     from reportlab.pdfbase.pdfmetrics import stringWidth
     size = start_size
     while size > 7:
@@ -63,7 +55,6 @@ def _auto_font_size(text: str, max_width: float, max_height: float,
 
 
 def _master_to_reader(file_path: str, file_type: str) -> PdfReader:
-    """Load master template as PDF reader regardless of source format."""
     if file_type == 'png':
         img = Image.open(file_path)
         iw, ih = img.size
@@ -92,10 +83,6 @@ def generate_personalized_pdf(
     verify_url: str = '',
     font_name: str = None,
 ) -> bytes:
-    """
-    Generate a personalised certificate by overlaying text onto the master.
-    Only nominated regions change — all other visual elements preserved exactly.
-    """
     reader = _master_to_reader(master_pdf_path, master_file_type)
     writer = PdfWriter()
     master_page = reader.pages[0]
@@ -106,7 +93,6 @@ def generate_personalized_pdf(
     name_font = font_name or _DEFAULT_FONT
     body_font = _DEFAULT_FONT_REGULAR
 
-    # Validate font availability — fall back to Helvetica
     try:
         from reportlab.pdfbase.pdfmetrics import stringWidth
         stringWidth('test', name_font, 12)
@@ -117,7 +103,6 @@ def generate_personalized_pdf(
     packet = io.BytesIO()
     c = canvas.Canvas(packet, pagesize=(page_w, page_h))
 
-    # ── Name ────────────────────────────────────────────────────────────────
     name_x = overlay_coords.get('name_x', page_w / 2)
     name_y = overlay_coords.get('name_y', page_h * 0.46)
     name_w = overlay_coords.get('name_w', page_w * 0.7)
@@ -134,21 +119,18 @@ def generate_personalized_pdf(
     else:
         c.drawString(name_x, name_y, full_name)
 
-    # ── Certificate ID ───────────────────────────────────────────────────────
     cid_x = overlay_coords.get('cert_id_x', 60)
     cid_y = overlay_coords.get('cert_id_y', 55)
     cid_size = overlay_coords.get('cert_id_font_size', 9)
     c.setFont(body_font, cid_size)
     c.drawString(cid_x, cid_y, certificate_id)
 
-    # ── Issue Date ───────────────────────────────────────────────────────────
     date_x = overlay_coords.get('date_x', 60)
     date_y = overlay_coords.get('date_y', 42)
     date_size = overlay_coords.get('date_font_size', 9)
     c.setFont(body_font, date_size)
     c.drawString(date_x, date_y, issuance_date)
 
-    # ── QR Code ─────────────────────────────────────────────────────────────
     if include_qr:
         qr_url = verify_url or f"CERT:{certificate_id}"
         qr_data = f"{qr_url}|{full_name}|{cert_name}|PASSED|{issuance_date}"

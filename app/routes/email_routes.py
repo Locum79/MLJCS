@@ -1,7 +1,3 @@
-"""
-Email infrastructure routes.
-Handles: send, queue status, logs, retry, campaigns, scheduling, settings.
-"""
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from app.models import (db, User, CertificateType, EmailLog, EmailDraft,
@@ -13,16 +9,9 @@ import json
 
 bp = Blueprint('email_routes', __name__)
 
-
-# ── Send (replaces certificates.py send endpoints) ─────────────────────────
-
 @bp.route('/api/email/send', methods=['POST'])
 @login_required
 def send_emails():
-    """
-    Unified send endpoint for certificate dispatch.
-    First call returns confirmation data. Second call (confirmed=true) queues.
-    """
     data = request.json or {}
     user_ids     = data.get('user_ids', [])
     cert_type_id = data.get('cert_type_id')
@@ -50,7 +39,6 @@ def send_emails():
             'est_minutes':        round(len(eligible) / max(send_rate, 1), 1),
         })
 
-    # Mark as sending and queue
     for user in eligible:
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
@@ -111,9 +99,6 @@ def send_all_approved():
     db.session.commit()
     return jsonify({'message': f'{queued} certificates queued', 'queued': queued})
 
-
-# ── Email Logs ─────────────────────────────────────────────────────────────
-
 @bp.route('/api/email/logs')
 @login_required
 def get_logs():
@@ -171,9 +156,6 @@ def retry_emails():
     retried = email_queue.retry_failed(log_ids)
     return jsonify({'message': f'{retried} emails queued for retry'})
 
-
-# ── Campaigns ──────────────────────────────────────────────────────────────
-
 @bp.route('/api/email/campaigns', methods=['GET'])
 @login_required
 def list_campaigns():
@@ -206,7 +188,6 @@ def create_campaign():
     if not draft_id:
         return jsonify({'error': 'Draft required'}), 400
 
-    # Resolve audience
     q = User.query.filter_by(unsubscribed=False)
     if cert_type_id:
         q = q.filter_by(certificate_type_id=cert_type_id)
@@ -259,15 +240,11 @@ def get_campaign_stats(cid):
 @bp.route('/api/email/campaigns/<int:cid>/resend', methods=['POST'])
 @login_required
 def resend_campaign(cid):
-    """Re-queue only failed logs for a campaign."""
     failed = EmailLog.query.filter_by(
         campaign_id=cid, status='failed').all()
     log_ids = [l.id for l in failed]
     retried = email_queue.retry_failed(log_ids)
     return jsonify({'message': f'{retried} emails re-queued'})
-
-
-# ── Unsubscribe (public) ────────────────────────────────────────────────────
 
 @bp.route('/unsubscribe/<int:user_id>', methods=['GET', 'POST'])
 def unsubscribe(user_id):
@@ -284,9 +261,6 @@ def unsubscribe(user_id):
         'You will still receive operational emails such as certificate dispatch.</p>'
         '</body></html>'
     )
-
-
-# ── DNS / Deliverability Guide ──────────────────────────────────────────────
 
 @bp.route('/api/email/dns-guide')
 @login_required

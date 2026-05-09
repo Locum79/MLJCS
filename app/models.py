@@ -19,7 +19,6 @@ class Admin(UserMixin, db.Model):
 
 
 class OrgSettings(db.Model):
-    """Global sender identity + org config."""
     __tablename__ = 'org_settings'
     id = db.Column(db.Integer, primary_key=True)
     org_name = db.Column(db.String(200), default='Medical Locum Jobs')
@@ -34,17 +33,17 @@ class CertificateType(db.Model):
     __tablename__ = 'certificate_types'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
-    course_code = db.Column(db.String(20), default='GEN')   # e.g. EMR, MH, BLS
+    course_code = db.Column(db.String(20), default='GEN')
     period = db.Column(db.String(100), nullable=False)
     master_pdf_path = db.Column(db.String(500), nullable=False)
     master_file_type = db.Column(db.String(10), default='pdf')
     overlay_coords = db.Column(db.JSON, nullable=False)
-    ocr_regions = db.Column(db.JSON, nullable=True)          # OCR-detected regions
+    ocr_regions = db.Column(db.JSON, nullable=True)
     registration_token = db.Column(db.String(100), unique=True, nullable=False)
     email_subject = db.Column(db.String(300), nullable=True)
     email_message = db.Column(db.Text, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    seq_counter = db.Column(db.Integer, default=0)           # per-cert-type sequence
+    seq_counter = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     users = db.relationship('User', backref='certificate_type', lazy=True)
@@ -58,12 +57,12 @@ class User(db.Model):
     other_name = db.Column(db.String(100))
     email = db.Column(db.String(255), nullable=False)
     certificate_type_id = db.Column(db.Integer, db.ForeignKey('certificate_types.id'), nullable=False)
-    status = db.Column(db.String(20), default='registered')  # registered/approved/rejected/sending/sent
-    certificate_id = db.Column(db.String(60), unique=True)   # generated at registration
+    status = db.Column(db.String(20), default='registered')
+    certificate_id = db.Column(db.String(60), unique=True)
     include_qr = db.Column(db.Boolean, default=True)
     score = db.Column(db.Float, nullable=True)
     completion_status = db.Column(db.String(50), nullable=True)
-    source = db.Column(db.String(50), default='manual')      # manual/csv/lms/webhook
+    source = db.Column(db.String(50), default='manual')
     approved_at = db.Column(db.DateTime)
     sent_at = db.Column(db.DateTime)
     archived_at = db.Column(db.DateTime)
@@ -81,7 +80,6 @@ class User(db.Model):
 
 
 class CertArchive(db.Model):
-    """Permanent record — survives user deletion. Powers QR verification."""
     __tablename__ = 'cert_archive'
     id = db.Column(db.Integer, primary_key=True)
     certificate_id = db.Column(db.String(60), unique=True, nullable=False)
@@ -92,7 +90,7 @@ class CertArchive(db.Model):
     email = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(20), default='issued')
     raw_binary = db.Column(db.LargeBinary, nullable=True)
-    pdf_binary = db.Column(db.LargeBinary, nullable=True)  # cached generated PDF
+    pdf_binary = db.Column(db.LargeBinary, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -113,20 +111,19 @@ class EmailDraft(db.Model):
     cert_type_id = db.Column(db.Integer, db.ForeignKey('certificate_types.id'), nullable=True)
     subject = db.Column(db.String(300), nullable=False)
     body = db.Column(db.Text, nullable=False)
-    include_attachment = db.Column(db.Boolean, default=True)   # Mode A vs Mode B
+    include_attachment = db.Column(db.Boolean, default=True)
     is_default = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class Campaign(db.Model):
-    """Communication campaigns — with or without certificate attachment."""
     __tablename__ = 'campaigns'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     cert_type_id = db.Column(db.Integer, db.ForeignKey('certificate_types.id'), nullable=True)
     draft_id = db.Column(db.Integer, db.ForeignKey('email_drafts.id'), nullable=True)
-    status = db.Column(db.String(20), default='draft')        # draft/scheduled/sent
+    status = db.Column(db.String(20), default='draft')
     include_attachment = db.Column(db.Boolean, default=False)
     recipient_count = db.Column(db.Integer, default=0)
     sent_count = db.Column(db.Integer, default=0)
@@ -148,15 +145,11 @@ class AuditLog(db.Model):
 
 
 class EmailLog(db.Model):
-    """
-    Permanent record of every email dispatch attempt.
-    Tracks status lifecycle: pending → processing → sent/failed.
-    """
     __tablename__ = 'email_logs'
     id               = db.Column(db.Integer, primary_key=True)
     recipient_email  = db.Column(db.String(255), nullable=False)
     recipient_name   = db.Column(db.String(300), nullable=True)
-    email_type       = db.Column(db.String(30), default='certificate')  # certificate / campaign
+    email_type       = db.Column(db.String(30), default='certificate')
     status           = db.Column(db.String(20), default='pending')
     user_id          = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
     cert_type_id     = db.Column(db.Integer, db.ForeignKey('certificate_types.id', ondelete='SET NULL'), nullable=True)
