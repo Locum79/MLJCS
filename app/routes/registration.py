@@ -2,7 +2,9 @@ from flask import Blueprint, request, render_template, jsonify
 from app.models import db, User, CertificateType
 from app.engine.cert_id import generate_cert_id, next_sequence
 from datetime import datetime
+import logging
 
+logger = logging.getLogger(__name__)
 bp = Blueprint('registration', __name__)
 
 @bp.route('/register/<token>', methods=['GET'])
@@ -21,29 +23,46 @@ def submit_registration(token):
     if not first_name or not surname or not email:
         return jsonify({'error': 'First name, surname and email are required'}), 400
 
-    # Duplicate check
+    # Duplicate check for email
     existing = User.query.filter_by(email=email, certificate_type_id=cert_type.id).first()
     if existing:
         return jsonify({'error': f'Email {email} is already registered for this certificate.'}), 400
 
-    try:
-        seq     = next_sequence(cert_type)
-        cert_id = generate_cert_id(cert_type.course_code, seq, datetime.utcnow())
+    # Try to generate a unique certificate ID (handles out-of-sync counters)
+    max_id_attempts = 10
+    user = None
+    
+    for attempt in range(max_id_attempts):
+        try:
+            seq     = next_sequence(cert_type)
+            cert_id = generate_cert_id(cert_type.course_code, seq, datetime.utcnow())
 
-        user = User(
-            first_name=first_name,
-            surname=surname,
-            other_name=(request.form.get('other_name') or '').strip(),
-            email=email,
-            certificate_type_id=cert_type.id,
-            certificate_id=cert_id,
-            status='registered',
-            source='public_form',
-        )
-        db.session.add(user)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': f'Database error: {str(e)}'}), 500
+            # Check if this ID specifically exists (extra safety)
+            collision = User.query.filter_by(certificate_id=cert_id).first()
+            if collision:
+                logger.warning(f"ID Collision detected: {cert_id}. Retrying...")
+                continue
 
-    return jsonify({'message': 'Registration successful', 'certificate_id': cert_id})
+            user = User(
+                first_name=first_name,
+                surname=surname,
+                other_name=(request.form.get('other_name') or '').strip(),
+                email=email,
+                certificate_type_id=cert_type.id,
+                certificate_id=cert_id,
+                status='registered',
+                source='public_form',
+            )
+            db.session.add(user)
+            db.session.commit()
+            break # Success!
+        except Exception as e:
+            db.session.rollback()
+            if "UniqueViolation" in str(e) or "duplicate key" in str(e).lower():
+                logger.warning(f"Database UniqueViolation on attempt {attempt+1}. Retrying...")
+                continue
+            return jsonify({'error': f'Database error: {str(e)}'}), 500
+    else:
+        return jsonify({'error': 'Failed to generate a unique Certificate ID after 10 attempts. Please contact admin.'}), 500
+
+    return jsonify({'message': 'Registration successful', 'certificate_id': user.certificate_id})

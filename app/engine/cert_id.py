@@ -15,8 +15,10 @@ def generate_cert_id(course_code: str, sequence: int, issued_at: datetime = None
 
 
 def next_sequence(cert_type) -> int:
-    """Atomically increment and return next sequence for a cert type."""
-    cert_type.seq_counter = (cert_type.seq_counter or 0) + 1
+    """Increment and return next sequence for a cert type."""
+    # Ensure it starts at 1 if None
+    current = cert_type.seq_counter or 0
+    cert_type.seq_counter = current + 1
     return cert_type.seq_counter
 
 
