@@ -740,3 +740,19 @@ def get_audit():
         'details': l.details,
         'created_at': l.created_at.strftime('%d/%m/%Y %H:%M:%S') if l.created_at else '',
     } for l in logs])
+
+@bp.route('/api/archive/view/<cert_id>')
+@login_required
+def view_archived_pdf(cert_id):
+    from flask import send_file
+    import io
+    record = CertArchive.query.filter_by(certificate_id=cert_id).first()
+    if not record or not record.pdf_binary:
+        return "Certificate PDF not found in archive. It may still be processing or failed.", 404
+    
+    return send_file(
+        io.BytesIO(record.pdf_binary),
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f"{cert_id}.pdf"
+    )

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_login import login_required, current_user
 from app.models import (db, User, CertificateType, EmailLog, EmailDraft,
-                         Campaign, OrgSettings)
+                         Campaign, OrgSettings, CertArchive)
 from app.services.email import queue as email_queue
 from app.services.email.tracking import summary_stats, failed_logs, campaign_stats
 from datetime import datetime
@@ -131,6 +131,28 @@ def get_logs():
         'total':    logs.total,
         'pages':    logs.pages,
         'page':     page,
+    })
+
+@bp.route('/api/email/logs/<int:log_id>')
+@login_required
+def get_log_detail(log_id):
+    log = EmailLog.query.get_or_404(log_id)
+    archive = None
+    if log.user_id:
+        user = db.session.get(User, log.user_id)
+        if user and user.certificate_id:
+            archive = CertArchive.query.filter_by(certificate_id=user.certificate_id).first()
+    
+    return jsonify({
+        'id': log.id,
+        'recipient_email': log.recipient_email,
+        'recipient_name': log.recipient_name,
+        'status': log.status,
+        'failed_reason': log.failed_reason,
+        'sent_at': log.sent_at.strftime('%d/%m/%Y %H:%M') if log.sent_at else None,
+        'has_archive': archive is not None,
+        'certificate_id': archive.certificate_id if archive else None,
+        'email_type': log.email_type,
     })
 
 
