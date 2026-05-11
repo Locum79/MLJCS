@@ -1,6 +1,7 @@
 import smtplib
 import logging
 import time
+import socket
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -11,22 +12,47 @@ from flask import current_app
 logger = logging.getLogger(__name__)
 
 
+def _force_ipv4(host: str) -> str:
+    """Force resolution to IPv4 to avoid 'Network is unreachable' on IPv6 stacks."""
+    try:
+        # Get the first IPv4 address
+        addr_info = socket.getaddrinfo(host, None, socket.AF_INET)
+        if addr_info:
+            return addr_info[0][4][0]
+    except Exception as e:
+        logger.debug(f"IPv4 resolution failed for {host}: {e}")
+    return host
+
+
 def _smtp_connection():
     cfg = current_app.config
     host = cfg['MAIL_SERVER']
     port = cfg['MAIL_PORT']
     
-    if cfg.get('MAIL_USE_SSL', False):
-        server = smtplib.SMTP_SSL(host, port, timeout=30)
-    else:
-        server = smtplib.SMTP(host, port, timeout=30)
-        server.ehlo()
-        if cfg.get('MAIL_USE_TLS', True):
-            server.starttls()
-            server.ehlo()
+    # Many cloud providers (Railway, etc.) have flaky IPv6 routing for SMTP
+    # Forcing IPv4 often resolves [Errno 101] Network is unreachable
+    resolved_host = _force_ipv4(host)
+    if resolved_host != host:
+        logger.debug(f"Resolved {host} to {resolved_host} (IPv4)")
     
-    server.login(cfg['MAIL_USERNAME'], cfg['MAIL_PASSWORD'])
-    return server
+    use_ssl = cfg.get('MAIL_USE_SSL', False)
+    use_tls = cfg.get('MAIL_USE_TLS', True)
+
+    try:
+        if use_ssl:
+            server = smtplib.SMTP_SSL(resolved_host, port, timeout=30)
+        else:
+            server = smtplib.SMTP(resolved_host, port, timeout=30)
+            server.ehlo()
+            if use_tls:
+                server.starttls()
+                server.ehlo()
+        
+        server.login(cfg['MAIL_USERNAME'], cfg['MAIL_PASSWORD'])
+        return server
+    except Exception as e:
+        logger.error(f"Failed to connect to SMTP {host}:{port} (resolved: {resolved_host}): {e}")
+        raise
 
 
 def _build_message(
@@ -92,3 +118,10 @@ def dispatch(
                 time.sleep(retry_delay * attempt)
 
     return {'success': False, 'error': last_error, 'attempts': max_retries}
+
+
+def dispatch_or_raise(*args, **kwargs):
+    result = dispatch(*args, **kwargs)
+    if not result['success']:
+        raise Exception(f"Email dispatch failed: {result['error']}")
+    return result

@@ -10,7 +10,7 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
     from app import create_app
     from app.models import db, User, CertificateType, EmailLog, CertArchive, OrgSettings, EmailDraft
     from app.engine.pdf_processor import generate_personalized_pdf
-    from app.services.email.sender import dispatch
+    from app.services.email.sender import dispatch_or_raise
     from app.services.email.templates import render, build_context, DEFAULT_CERT_SUBJECT, DEFAULT_CERT_BODY
 
     app = create_app()
@@ -79,7 +79,7 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
             subject = render(subject_tpl, ctx)
             body    = render(body_tpl, ctx)
 
-            result = dispatch(
+            dispatch_or_raise(
                 to_email=user.email,
                 subject=subject,
                 body=body,
@@ -92,16 +92,9 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
                 }],
             )
 
-            if result['success']:
-                log.status = 'sent'
-                log.sent_at = datetime.utcnow()
-                user.status = 'sent'
-            else:
-                log.status = 'failed'
-                log.failed_reason = result['error']
-                log.retry_count = (log.retry_count or 0) + result['attempts'] - 1
-                user.status = 'approved'  # revert so admin can retry
-
+            log.status = 'sent'
+            log.sent_at = datetime.utcnow()
+            user.status = 'sent'
             db.session.commit()
 
         except Exception as e:
@@ -122,7 +115,7 @@ def send_campaign_job(log_id: int, user_id: int, draft_id: int,
                        campaign_id: int = None):
     from app import create_app
     from app.models import db, User, EmailLog, EmailDraft, Campaign, OrgSettings
-    from app.services.email.sender import dispatch
+    from app.services.email.sender import dispatch_or_raise
     from app.services.email.templates import render, build_context
 
     app = create_app()
@@ -151,7 +144,7 @@ def send_campaign_job(log_id: int, user_id: int, draft_id: int,
             subject = render(draft.subject, ctx)
             body    = render(draft.body,    ctx)
 
-            result = dispatch(
+            dispatch_or_raise(
                 to_email=user.email,
                 subject=subject,
                 body=body,
@@ -161,20 +154,13 @@ def send_campaign_job(log_id: int, user_id: int, draft_id: int,
                 attachments=None,
             )
 
-            if result['success']:
-                log.status = 'sent'
-                log.sent_at = datetime.utcnow()
-            else:
-                log.status = 'failed'
-                log.failed_reason = result['error']
+            log.status = 'sent'
+            log.sent_at = datetime.utcnow()
 
             if campaign_id:
                 camp = db.session.get(Campaign, campaign_id)
                 if camp:
-                    if result['success']:
-                        camp.sent_count = (camp.sent_count or 0) + 1
-                    else:
-                        camp.failed_count = (camp.failed_count or 0) + 1
+                    camp.sent_count = (camp.sent_count or 0) + 1
 
             db.session.commit()
 
@@ -184,6 +170,10 @@ def send_campaign_job(log_id: int, user_id: int, draft_id: int,
                 db.session.rollback()
                 log.status = 'failed'
                 log.failed_reason = str(e)
+                if campaign_id:
+                    camp = db.session.get(Campaign, campaign_id)
+                    if camp:
+                        camp.failed_count = (camp.failed_count or 0) + 1
                 db.session.commit()
             except Exception:
                 pass
