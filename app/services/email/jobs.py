@@ -1,5 +1,7 @@
 import logging
 import json
+import io
+import os
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -32,7 +34,7 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
             issue_date = (user.sent_at or datetime.utcnow()).strftime('%d %B %Y')
             base_url = (org.verify_base_url or '').rstrip('/')
             verify_url = f"{base_url}/verify/{user.certificate_id}" if base_url and user.certificate_id else ''
-
+            
             archive = CertArchive.query.filter_by(
                 certificate_id=user.certificate_id).first()
 
@@ -40,8 +42,14 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
                 pdf_bytes = archive.pdf_binary
                 logger.info(f"Using cached PDF for {user.certificate_id}")
             else:
+                master_path = cert_type.master_pdf_path
+                # FALLBACK: If file is missing from disk (Railway restart), use the DB binary
+                if not os.path.exists(master_path) and cert_type.master_pdf_binary:
+                    logger.info(f"Master file missing from disk. Using DB binary for {cert_type.name}")
+                    master_path = io.BytesIO(cert_type.master_pdf_binary)
+                
                 pdf_bytes = generate_personalized_pdf(
-                    master_pdf_path=cert_type.master_pdf_path,
+                    master_pdf_path=master_path,
                     overlay_coords=cert_type.overlay_coords,
                     full_name=user.full_name,
                     certificate_id=user.certificate_id,

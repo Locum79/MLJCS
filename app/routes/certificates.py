@@ -101,9 +101,16 @@ def create_cert_type():
         ocr_result = {'regions': [], 'message': f'OCR skipped: {ocr_err}'}
 
     token = str(uuid.uuid4())[:8]
+    # Save binary to DB for persistence across container restarts
+    file.seek(0)
+    master_binary = file.read()
+    file.seek(0)
+
     ct = CertificateType(
         name=name, course_code=course_code, period=period,
-        master_pdf_path=filepath, master_file_type=ext,
+        master_pdf_path=filepath, 
+        master_pdf_binary=master_binary,
+        master_file_type=ext,
         overlay_coords=overlay_coords,
         ocr_regions=ocr_result.get('regions'),
         registration_token=token,

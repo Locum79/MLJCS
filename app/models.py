@@ -36,6 +36,7 @@ class CertificateType(db.Model):
     course_code = db.Column(db.String(20), default='GEN')
     period = db.Column(db.String(100), nullable=False)
     master_pdf_path = db.Column(db.String(500), nullable=False)
+    master_pdf_binary = db.Column(db.LargeBinary, nullable=True)
     master_file_type = db.Column(db.String(10), default='pdf')
     overlay_coords = db.Column(db.JSON, nullable=False)
     ocr_regions = db.Column(db.JSON, nullable=True)
