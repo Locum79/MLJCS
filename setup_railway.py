@@ -1,4 +1,10 @@
-"""Run once on Railway to seed admin, sample cert type, participants and draft."""
+"""
+Seed script: run once after migrations to create admin + sample data.
+Usage: python setup_railway.py
+
+NOTE: Schema is managed exclusively by Alembic.
+      Run `python migrate.py` (or `alembic upgrade head`) before this script.
+"""
 from app import create_app, db
 from app.models import Admin, CertificateType, User, EmailDraft, CertArchive
 from app.engine.luhn import generate_certificate_id
@@ -9,8 +15,6 @@ from datetime import datetime
 app = create_app()
 
 with app.app_context():
-    db.create_all()
-
     # ── Admin ─────────────────────────────────────────────────────────────
     admin_email = os.environ.get('ADMIN_EMAIL', 'admin')
     admin_password = os.environ.get('ADMIN_PASSWORD', 'admin')
@@ -59,17 +63,16 @@ with app.app_context():
         ]
         for i, (fn, sn, on, em, st, qr) in enumerate(participants, start=1):
             cert_id = generate_certificate_id(fn, sn, i, now)
-            sent_at = now if st == 'approved' else None
             u = User(
                 first_name=fn, surname=sn, other_name=on, email=em,
                 certificate_type_id=ct.id, status=st,
                 certificate_id=cert_id if st in ('approved', 'sent') else None,
-                include_qr=qr, approved_at=now if st == 'approved' else None,
-                sent_at=sent_at
+                include_qr=qr,
+                approved_at=now if st == 'approved' else None,
+                sent_at=now if st == 'approved' else None,
             )
             db.session.add(u)
 
-            # Archive approved ones
             if st == 'approved':
                 full_name = f"{fn} {on} {sn}".strip() if on else f"{fn} {sn}"
                 db.session.add(CertArchive(
