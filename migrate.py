@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 """
-Production migration runner.
-Called before gunicorn starts: `python migrate.py && gunicorn wsgi:app ...`
-
-Exit codes:
-  0 — migrations applied (or already up to date)
-  1 — migration failed (deployment will abort on Railway)
+Production migration runner — forces IPv4 to avoid Railway/Docker IPv6 issues.
+Called by start.sh before gunicorn.
 """
 import os
 import sys
+import socket
 import subprocess
 import logging
 
@@ -18,6 +15,18 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
+# ── Force IPv4: Railway containers often lack IPv6 routes, but DNS may
+# resolve Supabase to an IPv6 address first, causing instant failure.
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+    results = _orig_getaddrinfo(host, port, family, type, proto, flags)
+    ipv4 = [r for r in results if r[0] == socket.AF_INET]
+    return ipv4 if ipv4 else results  # fall back to whatever exists
+
+socket.getaddrinfo = _ipv4_only
+log.info("IPv4-only socket patch applied.")
+
 
 def main():
     db_url = os.environ.get('DATABASE_URL')
@@ -26,13 +35,10 @@ def main():
         sys.exit(1)
 
     log.info("Running Alembic migrations against Supabase PostgreSQL…")
-    result = subprocess.run(
-        ['alembic', 'upgrade', 'head'],
-        capture_output=False,   # let stdout/stderr pass through to Railway logs
-    )
+    result = subprocess.run(['alembic', 'upgrade', 'head'])
 
     if result.returncode != 0:
-        log.error("Alembic migrations FAILED (exit code %d). Aborting deployment.", result.returncode)
+        log.error("Alembic migrations FAILED (exit code %d). Aborting.", result.returncode)
         sys.exit(1)
 
     log.info("Migrations complete ✅")
