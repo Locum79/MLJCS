@@ -19,10 +19,6 @@ COPY . .
 
 RUN mkdir -p uploads
 
-# Force system-level IPv4 preference so libpq/psycopg2 never picks IPv6.
-# Railway containers lack IPv6 routing; Supabase DNS returns both A + AAAA.
-RUN echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
-
 EXPOSE 8080
 
 # start.sh runs migrations at container startup (runtime), then launches gunicorn.
