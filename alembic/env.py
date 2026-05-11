@@ -31,7 +31,8 @@ if not database_url:
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
 
-config.set_main_option('sqlalchemy.url', database_url)
+# configparser interprets % as interpolation syntax — escape all % signs.
+config.set_main_option('sqlalchemy.url', database_url.replace('%', '%%'))
 
 # ── Import all models so autogenerate detects them ────────────────────────
 from app.models import (  # noqa: F401, E402
@@ -54,7 +55,7 @@ target_metadata = db.metadata
 
 def run_migrations_offline() -> None:
     """Run migrations without a live DB connection (outputs SQL)."""
-    url = config.get_main_option('sqlalchemy.url')
+    url = database_url  # use the raw URL, not the configparser-escaped version
     context.configure(
         url=url,
         target_metadata=target_metadata,
