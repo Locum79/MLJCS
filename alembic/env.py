@@ -1,14 +1,5 @@
-# ── IPv4 patch — MUST be first, before any import that touches the network.
-# Railway has no IPv6 routing; Supabase DNS returns IPv6 first → instant fail.
-import socket as _socket
-_orig = _socket.getaddrinfo
-def _ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
-    results = _orig(host, port, family, type, proto, flags)
-    ipv4 = [r for r in results if r[0] == _socket.AF_INET]
-    return ipv4 if ipv4 else results
-_socket.getaddrinfo = _ipv4_only
-
 import os
+import re
 import sys
 from logging.config import fileConfig
 
@@ -29,7 +20,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# ── DATABASE_URL — single source of truth, no fallback ────────────────────
+# ── DATABASE_URL — single source of truth ─────────────────────────────────
 database_url = os.environ.get('DATABASE_URL')
 if not database_url:
     raise RuntimeError(
@@ -37,26 +28,48 @@ if not database_url:
         "Alembic requires DATABASE_URL to be set to your Supabase PostgreSQL URL."
     )
 
-# Railway / Heroku legacy compat: postgres:// → postgresql://
+# Normalise scheme
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
 
-# configparser interprets % as interpolation syntax — escape all % signs.
+# ── Coerce to Supabase pooler (IPv4-only) ─────────────────────────────────
+# The direct Supabase host (db.<ref>.supabase.co:5432) resolves to IPv6 on
+# Railway, which has no IPv6 routing.  The pooler endpoint is IPv4-only.
+def _coerce_to_pooler(url: str) -> str:
+    if 'pooler.supabase.com' in url:
+        return url
+    m = re.search(r'@db\.([a-z0-9]+)\.supabase\.co(:\d+)?/', url)
+    if not m:
+        return url
+    project_ref = m.group(1)
+    region = os.environ.get('SUPABASE_REGION', 'eu-west-2')
+    pooler_host = f'aws-0-{region}.pooler.supabase.com'
+    url = re.sub(
+        r'@db\.[a-z0-9]+\.supabase\.co(:\d+)?/',
+        f'@{pooler_host}:6543/',
+        url,
+    )
+    url = re.sub(
+        r'(postgresql(?:\+psycopg2)?://)postgres:',
+        rf'\1postgres.{project_ref}:',
+        url,
+    )
+    if 'sslmode=' not in url:
+        sep = '&' if '?' in url else '?'
+        url += f'{sep}sslmode=require'
+    return url
+
+database_url = _coerce_to_pooler(database_url)
+
+# configparser treats % as interpolation — escape for set_main_option only
 config.set_main_option('sqlalchemy.url', database_url.replace('%', '%%'))
 
 # ── Import all models so autogenerate detects them ────────────────────────
-from app.models import (  # noqa: F401, E402
-    Admin,
-    OrgSettings,
-    CertificateType,
-    User,
-    CertArchive,
-    EmailDraft,
-    Campaign,
-    AuditLog,
-    EmailLog,
+from app.models import (  # noqa: F401
+    Admin, OrgSettings, CertificateType, User,
+    CertArchive, EmailDraft, Campaign, AuditLog, EmailLog,
 )
-from app import db  # noqa: E402
+from app import db  # noqa
 
 target_metadata = db.metadata
 
@@ -64,10 +77,8 @@ target_metadata = db.metadata
 # ── Migration runners ──────────────────────────────────────────────────────
 
 def run_migrations_offline() -> None:
-    """Run migrations without a live DB connection (outputs SQL)."""
-    url = database_url  # use the raw URL, not the configparser-escaped version
     context.configure(
-        url=url,
+        url=database_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={'paramstyle': 'named'},
@@ -79,7 +90,6 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations against a live DB connection."""
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix='sqlalchemy.',

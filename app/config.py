@@ -1,7 +1,60 @@
 import os
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _coerce_to_pooler(url: str) -> str:
+    """
+    Rewrite a Supabase direct-connection URL to the IPv4-only transaction
+    pooler endpoint.  Supabase pooler URLs are IPv4-only and designed for
+    environments like Railway that lack IPv6 routing.
+
+    Direct:  postgresql://postgres:<pw>@db.<ref>.supabase.co:5432/postgres
+    Pooler:  postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres
+
+    If DATABASE_URL is already a pooler URL (*.pooler.supabase.com) or is
+    not a Supabase URL at all, it is returned unchanged.
+    """
+    # Already a pooler URL — nothing to do.
+    if 'pooler.supabase.com' in url:
+        return url
+
+    # Match Supabase direct connection host: db.<project-ref>.supabase.co
+    m = re.search(r'@db\.([a-z0-9]+)\.supabase\.co(:\d+)?/', url)
+    if not m:
+        return url  # Not a recognisable Supabase direct URL — leave alone.
+
+    project_ref = m.group(1)
+
+    # Allow the region to be overridden via env var; default to eu-west-2
+    # which matches the project above. Set SUPABASE_REGION on Railway if yours differs.
+    region = os.environ.get('SUPABASE_REGION', 'eu-west-2')
+    pooler_host = f'aws-0-{region}.pooler.supabase.com'
+    pooler_port = '6543'
+
+    # Replace host[:port]
+    url = re.sub(
+        r'@db\.[a-z0-9]+\.supabase\.co(:\d+)?/',
+        f'@{pooler_host}:{pooler_port}/',
+        url,
+    )
+
+    # Pooler requires the user to be postgres.<project-ref>
+    # Rewrite user portion: //postgres: → //postgres.<ref>:
+    url = re.sub(
+        r'(postgresql(?:\+psycopg2)?://)postgres:',
+        rf'\1postgres.{project_ref}:',
+        url,
+    )
+
+    # Ensure sslmode=require is present
+    if 'sslmode=' not in url:
+        sep = '&' if '?' in url else '?'
+        url += f'{sep}sslmode=require'
+
+    return url
 
 
 class Config:
@@ -19,6 +72,10 @@ class Config:
     # Railway / Heroku legacy compat: postgres:// → postgresql://
     if _database_url.startswith('postgres://'):
         _database_url = _database_url.replace('postgres://', 'postgresql://', 1)
+
+    # Rewrite to Supabase pooler (IPv4-only) to avoid IPv6 failures on Railway.
+    # If DATABASE_URL is already a pooler URL this is a no-op.
+    _database_url = _coerce_to_pooler(_database_url)
 
     SQLALCHEMY_DATABASE_URI = _database_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
