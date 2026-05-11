@@ -21,4 +21,6 @@ RUN mkdir -p uploads
 
 EXPOSE 8080
 
-CMD ["gunicorn", "wsgi:app", "--bind", "0.0.0.0:8080", "--workers", "2", "--timeout", "120"]
+# start.sh runs migrations at container startup (runtime), then launches gunicorn.
+# Migrations must NOT run during build — the DB is unreachable then.
+CMD ["sh", "start.sh"]
