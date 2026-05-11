@@ -31,6 +31,12 @@ def send_certificate_job(log_id: int, user_id: int, cert_type_id: int,
         db.session.commit()
 
         try:
+            if not user.certificate_id:
+                from app.engine.cert_id import assign_certificate_id
+                assign_certificate_id(user)
+                db.session.commit()
+                logger.info(f"Assigned missing ID to user {user_id}: {user.certificate_id}")
+
             issue_date = (user.sent_at or datetime.utcnow()).strftime('%d %B %Y')
             base_url = (org.verify_base_url or '').rstrip('/')
             verify_url = f"{base_url}/verify/{user.certificate_id}" if base_url and user.certificate_id else ''

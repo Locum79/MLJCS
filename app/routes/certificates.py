@@ -2,7 +2,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app
 from flask_login import login_required, current_user
 from app.models import (db, User, CertificateType, AuditLog,
                          CertArchive, EmailDraft, OrgSettings, Campaign)
-from app.engine.cert_id import generate_cert_id, next_sequence, verify_format
+from app.engine.cert_id import assign_certificate_id, verify_format
 from app.engine.ocr_analyzer import analyze_template
 from datetime import datetime
 import uuid, os, json, io, csv
@@ -249,20 +249,20 @@ def add_user():
     if not first_name or not surname or not email:
         return jsonify({'error': 'first_name, surname and email required'}), 400
 
-    seq     = next_sequence(ct)
-    cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
-
     user = User(
         first_name=first_name,
         surname=surname,
         other_name=(data.get('other_name') or '').strip(),
         email=email,
         certificate_type_id=ct_id,
-        certificate_id=cert_id,
         status='registered',
         source='manual',
     )
     db.session.add(user)
+    db.session.flush()
+
+    cert_id = assign_certificate_id(user)
+
     db.session.add(AuditLog(action='registered', performed_by=current_user.email,
                             details={'cert_id': cert_id, 'email': email}))
     db.session.commit()
@@ -310,20 +310,20 @@ def import_users():
             first_name = parts[0] if parts else ''
             surname = parts[-1] if len(parts) > 1 else ''
 
-        seq = next_sequence(ct)
-        cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
-
         user = User(
             first_name=first_name, surname=surname,
             email=email,
             certificate_type_id=int(ct_id),
-            certificate_id=cert_id,
             status='registered',
             score=float(row.get('score') or 0) if row.get('score') else None,
             completion_status=str(row.get('completion_status') or '').strip() or None,
             source='csv',
         )
         db.session.add(user)
+        db.session.flush()
+
+        assign_certificate_id(user)
+        
         imported += 1
 
     db.session.commit()
@@ -628,21 +628,21 @@ def lms_completion():
         first_name = email.split('@')[0]
         surname = ""
 
-    seq = next_sequence(ct)
-    cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
-
     user = User(
         first_name=first_name,
         surname=surname,
         email=email,
         certificate_type_id=ct.id,
-        certificate_id=cert_id,
         status='registered',
         score=float(score) if score else None,
         completion_status=completion,
         source='lms',
     )
     db.session.add(user)
+    db.session.flush()
+
+    cert_id = assign_certificate_id(user)
+
     db.session.commit()
 
     return jsonify({
@@ -679,19 +679,19 @@ def lms_users():
             f_name = email.split('@')[0]
             s_name = ""
 
-        seq = next_sequence(ct)
-        cert_id = generate_cert_id(ct.course_code, seq, datetime.utcnow())
-
         user = User(
             first_name=f_name,
             surname=s_name,
             email=email,
             certificate_type_id=ct.id,
-            certificate_id=cert_id,
             status='registered',
             source='lms',
         )
         db.session.add(user)
+        db.session.flush()
+
+        assign_certificate_id(user)
+        
         imported += 1
 
     db.session.commit()

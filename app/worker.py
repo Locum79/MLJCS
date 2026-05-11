@@ -30,9 +30,15 @@ def generate_and_send_certificate(user_id: int, certificate_type_id: int, draft_
             cert_type = db.session.get(CertificateType, certificate_type_id)
             org = _get_org_settings(None)
 
+            if not user.certificate_id:
+                from app.engine.cert_id import assign_certificate_id
+                assign_certificate_id(user)
+                db.session.commit()
+                logger.info(f"Worker assigned missing ID to user {user_id}: {user.certificate_id}")
+
             issue_date = (user.sent_at or datetime.utcnow()).strftime('%d %B %Y')
             base_url = org.verify_base_url or ''
-            verify_url = f"{base_url}/verify/{user.certificate_id}" if base_url else ''
+            verify_url = f"{base_url}/verify/{user.certificate_id}" if base_url and user.certificate_id else ''
 
             # Resolve email template
             subject_tpl = body_tpl = None
