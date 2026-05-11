@@ -1,3 +1,13 @@
+# ── IPv4 patch — MUST be first, before any import that touches the network.
+# Railway has no IPv6 routing; Supabase DNS returns IPv6 first → instant fail.
+import socket as _socket
+_orig = _socket.getaddrinfo
+def _ipv4_only(host, port, family=0, type=0, proto=0, flags=0):
+    results = _orig(host, port, family, type, proto, flags)
+    ipv4 = [r for r in results if r[0] == _socket.AF_INET]
+    return ipv4 if ipv4 else results
+_socket.getaddrinfo = _ipv4_only
+
 import os
 import sys
 from logging.config import fileConfig
