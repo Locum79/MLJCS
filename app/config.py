@@ -31,3 +31,6 @@ class Config:
     MAIL_PASSWORD = os.environ.get('MAIL_PASSWORD', '')
 
     ADMIN_EMAILS = os.environ.get('ADMIN_EMAILS', 'admin@example.com').split(',')
+    
+    # SendGrid API (Bypasses SMTP port blocking on Railway)
+    SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')

@@ -2,6 +2,9 @@ import smtplib
 import logging
 import time
 import socket
+import json
+import base64
+import urllib.request
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -87,6 +90,57 @@ def _build_message(
     return msg
 
 
+def _dispatch_sendgrid(
+    api_key: str,
+    to_email: str,
+    subject: str,
+    body: str,
+    from_name: str,
+    from_email: str,
+    reply_to: str = '',
+    attachments: List[Dict] = None,
+) -> Dict:
+    """Send email via SendGrid Web API (Bypasses SMTP port blocking)."""
+    url = "https://api.sendgrid.com/v3/mail/send"
+    
+    # Construct SendGrid JSON payload
+    payload = {
+        "personalizations": [{
+            "to": [{"email": to_email}],
+            "subject": subject
+        }],
+        "from": {"email": from_email, "name": from_name},
+        "content": [{"type": "text/plain", "value": body}]
+    }
+    
+    if reply_to:
+        payload["reply_to"] = {"email": reply_to}
+        
+    if attachments:
+        payload["attachments"] = []
+        for att in attachments:
+            payload["attachments"].append({
+                "content": base64.b64encode(att['data']).decode('utf-8'),
+                "filename": att['filename'],
+                "type": "application/pdf",
+                "disposition": "attachment"
+            })
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers)
+        with urllib.request.urlopen(req) as response:
+            if response.getcode() in [200, 201, 202]:
+                return {'success': True, 'error': None, 'attempts': 1}
+            return {'success': False, 'error': f"SendGrid error: {response.getcode()}", 'attempts': 1}
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'attempts': 1}
+
+
 def dispatch(
     to_email: str,
     subject: str,
@@ -98,6 +152,17 @@ def dispatch(
     max_retries: int = 3,
     retry_delay: float = 5.0,
 ) -> Dict:
+    # 1. Try SendGrid API first if configured (Bypasses Railway Firewall)
+    api_key = current_app.config.get('SENDGRID_API_KEY')
+    if api_key:
+        logger.debug(f"Using SendGrid API for {to_email}")
+        result = _dispatch_sendgrid(api_key, to_email, subject, body, from_name, from_email, reply_to, attachments)
+        if result['success']:
+            logger.info(f"Email sent via SendGrid API → {to_email}")
+            return result
+        logger.warning(f"SendGrid API failed: {result['error']}. Falling back to SMTP...")
+
+    # 2. Fallback to SMTP
     from_header = f"{from_name} <{from_email}>"
     msg = _build_message(to_email, subject, body, from_header, reply_to, attachments)
 
@@ -106,7 +171,7 @@ def dispatch(
         try:
             with _smtp_connection() as server:
                 server.send_message(msg)
-            logger.info(f"Email sent → {to_email} (attempt {attempt})")
+            logger.info(f"Email sent via SMTP → {to_email} (attempt {attempt})")
             return {'success': True, 'error': None, 'attempts': attempt}
         except smtplib.SMTPRecipientsRefused as e:
             logger.warning(f"Hard bounce {to_email}: {e}")
