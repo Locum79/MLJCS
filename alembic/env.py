@@ -1,5 +1,4 @@
 import os
-import re
 import sys
 from logging.config import fileConfig
 
@@ -16,35 +15,18 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# ── Same pooler conversion as app/config.py ───────────────────────────────
-def _to_pooler(url: str) -> str:
-    if not url or 'pooler.supabase.com' in url:
-        return url
-    m = re.search(r'@db\.([a-z0-9]+)\.supabase\.co(?::\d+)?/', url)
-    if not m:
-        return url
-    ref = m.group(1)
-    region = os.environ.get('SUPABASE_REGION', 'eu-central-1')
-    pooler = f'aws-0-{region}.pooler.supabase.com'
-    url = re.sub(r'@db\.[a-z0-9]+\.supabase\.co(?::\d+)?/', f'@{pooler}:6543/', url)
-    url = re.sub(r'(postgresql(?:\+psycopg2)?://)postgres(?!\.)(:)', rf'\1postgres.{ref}\2', url)
-    if 'sslmode=' not in url:
-        url += ('&' if '?' in url else '?') + 'sslmode=require'
-    return url
-
-
-raw = os.environ.get('DATABASE_URL', '')
-if not raw:
+# DATABASE_URL is pre-rewritten to the pooler URL by migrate.py before
+# this subprocess runs. Just read it directly — no transformation needed.
+database_url = os.environ.get('DATABASE_URL', '')
+if not database_url:
     raise RuntimeError("DATABASE_URL is not set.")
-if raw.startswith('postgres://'):
-    raw = raw.replace('postgres://', 'postgresql://', 1)
 
-database_url = _to_pooler(raw)
+if database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
 
 # configparser requires % escaped as %%
 config.set_main_option('sqlalchemy.url', database_url.replace('%', '%%'))
 
-# ── Models ────────────────────────────────────────────────────────────────
 from app.models import (  # noqa: F401
     Admin, OrgSettings, CertificateType, User,
     CertArchive, EmailDraft, Campaign, AuditLog, EmailLog,
