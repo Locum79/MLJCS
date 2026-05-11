@@ -21,20 +21,29 @@ def submit_registration(token):
     if not first_name or not surname or not email:
         return jsonify({'error': 'First name, surname and email are required'}), 400
 
-    seq     = next_sequence(cert_type)
-    cert_id = generate_cert_id(cert_type.course_code, seq, datetime.utcnow())
+    # Duplicate check
+    existing = User.query.filter_by(email=email, certificate_type_id=cert_type.id).first()
+    if existing:
+        return jsonify({'error': f'Email {email} is already registered for this certificate.'}), 400
 
-    user = User(
-        first_name=first_name,
-        surname=surname,
-        other_name=(request.form.get('other_name') or '').strip(),
-        email=email,
-        certificate_type_id=cert_type.id,
-        certificate_id=cert_id,
-        status='registered',
-        source='public_form',
-    )
-    db.session.add(user)
-    db.session.commit()
+    try:
+        seq     = next_sequence(cert_type)
+        cert_id = generate_cert_id(cert_type.course_code, seq, datetime.utcnow())
+
+        user = User(
+            first_name=first_name,
+            surname=surname,
+            other_name=(request.form.get('other_name') or '').strip(),
+            email=email,
+            certificate_type_id=cert_type.id,
+            certificate_id=cert_id,
+            status='registered',
+            source='public_form',
+        )
+        db.session.add(user)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'Database error: {str(e)}'}), 500
 
     return jsonify({'message': 'Registration successful', 'certificate_id': cert_id})
