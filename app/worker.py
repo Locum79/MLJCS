@@ -63,7 +63,10 @@ def generate_certificate(job_id: int, certificate_id: str):
                 verify_url=verify_url
             )
 
-            cert.transition_to_ready(pdf_bytes)
+            import hashlib
+            pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+            cert.transition_to_generated(pdf_bytes, pdf_hash)
+            cert.transition_to_ready()
             cert.transition_to_queued()
             db.session.commit()
 
@@ -99,7 +102,7 @@ def dispatch_certificate(job_id: int, certificate_id: str, draft_id: int = None)
             return
 
         try:
-            cert.transition_to_sending()
+            cert.transition_to_dispatching()
             db.session.commit()
 
             user = cert.user
@@ -121,7 +124,7 @@ def dispatch_certificate(job_id: int, certificate_id: str, draft_id: int = None)
                 subject_tpl = cert_type.email_subject
 
             # Send email - SendGrid accepted message -> SENT
-            send_certificate_email(
+            message_id = send_certificate_email(
                 to_email=user.email, 
                 first_name=user.first_name, 
                 full_name=user.full_name, 
@@ -138,7 +141,7 @@ def dispatch_certificate(job_id: int, certificate_id: str, draft_id: int = None)
                 include_attachment=True
             )
 
-            cert.transition_to_sent()
+            cert.transition_to_sent(message_id)
             user.status = 'sent'
             user.sent_at = datetime.utcnow()
             db.session.add(AuditLog(user_id=user.id, action='sent', performed_by='system', details={'cert_id': cert.id, 'email': user.email}))

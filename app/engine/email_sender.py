@@ -25,11 +25,18 @@ def send_certificate_email(to_email, first_name, full_name, course_name, pdf_byt
     if reply_to:
         msg.reply_to = reply_to
     
+    import uuid
+    message_id = str(uuid.uuid4())
+    if not hasattr(msg, 'extra_headers') or msg.extra_headers is None:
+        msg.extra_headers = {}
+    msg.extra_headers['X-Dispatch-Message-ID'] = message_id
+
     if include_attachment and pdf_bytes:
         msg.attach(f"{certificate_id}.pdf", "application/pdf", pdf_bytes)
     
     try:
         mail.send(msg)
+        return message_id
     except Exception as e:
         print(f"Failed to send email: {e}")
         raise

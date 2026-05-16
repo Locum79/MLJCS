@@ -9,14 +9,15 @@ class CertificateStatus:
     DRAFT = "DRAFT"
     APPROVED_FOR_GENERATION = "APPROVED_FOR_GENERATION"
     GENERATING = "GENERATING"
+    GENERATED = "GENERATED"
     READY_FOR_DISPATCH = "READY_FOR_DISPATCH"
     QUEUED_FOR_DISPATCH = "QUEUED_FOR_DISPATCH"
-    SENDING = "SENDING"
+    DISPATCHING = "DISPATCHING"
     SENT = "SENT"
     DELIVERED_CONFIRMED = "DELIVERED_CONFIRMED"
     
-    GENERATION_FAILED = "GENERATION_FAILED"
-    DISPATCH_FAILED = "DISPATCH_FAILED"
+    FAILED_GENERATION = "FAILED_GENERATION"
+    FAILED_DISPATCH = "FAILED_DISPATCH"
     PERMANENTLY_FAILED = "PERMANENTLY_FAILED"
 
 
@@ -227,6 +228,18 @@ class EmailLog(db.Model):
         super(EmailLog, self).__init__(**kwargs)
 
 
+class JobEventLog(db.Model):
+    __tablename__ = 'job_event_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    cert_id = db.Column(db.String(60), db.ForeignKey('certificates.id'), nullable=False)
+    state = db.Column(db.String(50), nullable=False)
+    time = db.Column(db.DateTime, default=datetime.utcnow)
+    details = db.Column(db.JSON, nullable=True)
+
+    def __init__(self, **kwargs):
+        super(JobEventLog, self).__init__(**kwargs)
+
+
 class Certificate(db.Model):
     __tablename__ = 'certificates'
     id = db.Column(db.String(60), primary_key=True) # certificate_id
@@ -236,6 +249,8 @@ class Certificate(db.Model):
     asset_id = db.Column(db.String(36), nullable=True)
     status = db.Column(db.String(30), default=CertificateStatus.DRAFT)
     pdf_artifact = db.Column(db.LargeBinary, nullable=True)
+    pdf_hash = db.Column(db.String(128), nullable=True)
+    sendgrid_message_id = db.Column(db.String(128), nullable=True)
     failure_count = db.Column(db.Integer, default=0)
     last_error = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -247,46 +262,67 @@ class Certificate(db.Model):
     def __init__(self, **kwargs):
         super(Certificate, self).__init__(**kwargs)
 
+    def _log_event(self, state, details=None):
+        event = JobEventLog(cert_id=self.id, state=state, details=details)
+        db.session.add(event)
+
     def transition_to_approved(self):
         if self.status != CertificateStatus.DRAFT:
             raise RuntimeError(f"Invalid transition to APPROVED from {self.status}")
         self.status = CertificateStatus.APPROVED_FOR_GENERATION
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status)
 
     def transition_to_generating(self):
-        valid_states = [CertificateStatus.APPROVED_FOR_GENERATION, CertificateStatus.GENERATION_FAILED]
+        valid_states = [CertificateStatus.APPROVED_FOR_GENERATION, CertificateStatus.FAILED_GENERATION]
         if self.status not in valid_states:
             raise RuntimeError(f"Invalid transition to GENERATING from {self.status}")
         self.status = CertificateStatus.GENERATING
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status)
 
-    def transition_to_ready(self, pdf_bytes):
+    def transition_to_generated(self, pdf_bytes, pdf_hash):
         if self.status != CertificateStatus.GENERATING:
-            raise RuntimeError(f"Invalid transition to READY from {self.status}")
-        if not pdf_bytes:
-            raise ValueError("READY_FOR_DISPATCH requires finalized PDF artifact")
+            raise RuntimeError(f"Invalid transition to GENERATED from {self.status}")
+        if not pdf_bytes or not pdf_hash:
+            raise ValueError("GENERATED requires finalized PDF artifact and hash")
         self.pdf_artifact = pdf_bytes
+        self.pdf_hash = pdf_hash
+        self.status = CertificateStatus.GENERATED
+        self.updated_at = datetime.utcnow()
+        self._log_event(self.status, details={"pdf_hash": pdf_hash})
+
+    def transition_to_ready(self):
+        if self.status != CertificateStatus.GENERATED:
+            raise RuntimeError(f"Invalid transition to READY from {self.status}")
         self.status = CertificateStatus.READY_FOR_DISPATCH
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status)
 
     def transition_to_queued(self):
         if self.status != CertificateStatus.READY_FOR_DISPATCH:
             raise RuntimeError(f"Invalid transition to QUEUED from {self.status}")
         self.status = CertificateStatus.QUEUED_FOR_DISPATCH
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status)
 
-    def transition_to_sending(self):
-        valid_states = [CertificateStatus.QUEUED_FOR_DISPATCH, CertificateStatus.DISPATCH_FAILED]
+    def transition_to_dispatching(self):
+        valid_states = [CertificateStatus.QUEUED_FOR_DISPATCH, CertificateStatus.FAILED_DISPATCH]
         if self.status not in valid_states:
-            raise RuntimeError(f"Invalid transition to SENDING from {self.status}")
-        self.status = CertificateStatus.SENDING
+            raise RuntimeError(f"Invalid transition to DISPATCHING from {self.status}")
+        self.status = CertificateStatus.DISPATCHING
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status)
 
-    def transition_to_sent(self):
-        if self.status != CertificateStatus.SENDING:
+    def transition_to_sent(self, message_id):
+        if self.status != CertificateStatus.DISPATCHING:
             raise RuntimeError(f"Invalid transition to SENT from {self.status}")
+        if not message_id:
+            raise ValueError("SENT requires SendGrid message ID")
+        self.sendgrid_message_id = message_id
         self.status = CertificateStatus.SENT
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status, details={"message_id": message_id})
 
     def fail_generation(self, error):
         self.failure_count += 1
@@ -294,8 +330,9 @@ class Certificate(db.Model):
         if self.failure_count >= 5:
             self.status = CertificateStatus.PERMANENTLY_FAILED
         else:
-            self.status = CertificateStatus.GENERATION_FAILED
+            self.status = CertificateStatus.FAILED_GENERATION
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status, details={"error": str(error)})
 
     def fail_dispatch(self, error):
         self.failure_count += 1
@@ -303,5 +340,7 @@ class Certificate(db.Model):
         if self.failure_count >= 5:
             self.status = CertificateStatus.PERMANENTLY_FAILED
         else:
-            self.status = CertificateStatus.DISPATCH_FAILED
+            self.status = CertificateStatus.FAILED_DISPATCH
         self.updated_at = datetime.utcnow()
+        self._log_event(self.status, details={"error": str(error)})
+
