@@ -51,26 +51,27 @@ def _auto_font_size(text: str, max_width: float, max_height: float, font_name: s
     return size
 
 
-def _master_to_reader(file_path: str, file_type: str) -> PdfReader:
+def _binary_to_reader(binary_data: bytes, file_type: str) -> PdfReader:
     if file_type == 'png':
-        img = Image.open(file_path)
+        img = Image.open(io.BytesIO(binary_data))
         iw, ih = img.size
         scale = min(841.89 / ih, 595.28 / iw)
         pw, ph = (iw * scale, ih * scale)
         buf = io.BytesIO()
         c = canvas.Canvas(buf, pagesize=(pw, ph))
-        c.drawImage(ImageReader(file_path), 0, 0, width=pw, height=ph, preserveAspectRatio=True)
+        c.drawImage(ImageReader(img), 0, 0, width=pw, height=ph, preserveAspectRatio=True)
         c.save()
         buf.seek(0)
         return PdfReader(buf)
     else:
-        return PdfReader(file_path)
+        return PdfReader(io.BytesIO(binary_data))
 
 
-def generate_personalized_pdf(master_pdf_path: str, overlay_coords: dict, full_name: str, certificate_id: str, issuance_date: str, include_qr: bool = True, cert_name: str = '', master_file_type: str = 'pdf', verify_url: str = '', font_name: str = None) -> bytes:
-    if not os.path.isfile(master_pdf_path):
-        raise FileNotFoundError(f'Master template missing: {master_pdf_path}')
-    reader = _master_to_reader(master_pdf_path, master_file_type)
+def generate_personalized_pdf(template_binary: bytes, overlay_coords: dict, full_name: str, certificate_id: str, issuance_date: str, include_qr: bool = True, cert_name: str = '', master_file_type: str = 'pdf', verify_url: str = '', font_name: str = None) -> bytes:
+    if not template_binary:
+        raise ValueError("template_binary is required")
+
+    reader = _binary_to_reader(template_binary, master_file_type)
     writer = PdfWriter()
     master_page = reader.pages[0]
     page_w = float(master_page.mediabox.width)

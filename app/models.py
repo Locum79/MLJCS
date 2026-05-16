@@ -9,10 +9,17 @@ class JobQueue(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     task_name = db.Column(db.String(120), nullable=False)
     payload = db.Column(db.JSON, nullable=True)
-    status = db.Column(db.String(20), default="pending")  # pending | running | done | failed
+    idempotency_key = db.Column(db.String(255), unique=True, nullable=True)
+    status = db.Column(db.String(20), default="PENDING")
+    checkpoint = db.Column(db.String(50), default="INIT")
     attempts = db.Column(db.Integer, default=0)
+    locked_at = db.Column(db.DateTime, nullable=True)
+    locked_by = db.Column(db.String(100), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super(JobQueue, self).__init__(**kwargs)
 
 class Admin(UserMixin, db.Model):
     __tablename__ = 'admins'
@@ -44,13 +51,26 @@ class OrgSettings(db.Model):
         super(OrgSettings, self).__init__(**kwargs)
 
 
+class CertificateAsset(db.Model):
+    __tablename__ = 'certificate_assets'
+    id = db.Column(db.String(36), primary_key=True)
+    name = db.Column(db.Text, nullable=False)
+    file_binary = db.Column(db.LargeBinary, nullable=False)
+    file_hash = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super(CertificateAsset, self).__init__(**kwargs)
+
+
 class CertificateType(db.Model):
     __tablename__ = 'certificate_types'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
     course_code = db.Column(db.String(20), default='GEN')
     period = db.Column(db.String(100), nullable=False)
-    master_pdf_path = db.Column(db.String(500), nullable=False)
+    asset_id = db.Column(db.String(36), db.ForeignKey('certificate_assets.id'), nullable=True)
+    master_pdf_path = db.Column(db.String(500), nullable=True)
     master_pdf_binary = db.Column(db.LargeBinary, nullable=True)
     master_file_type = db.Column(db.String(10), default='pdf')
     overlay_coords = db.Column(db.JSON, nullable=False)

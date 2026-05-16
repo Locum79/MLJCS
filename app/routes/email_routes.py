@@ -42,7 +42,7 @@ def send_emails():
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
     db.session.flush()
-    current_app.task_queue.enqueue('process_bulk_certificates', user_ids=[
+    current_app.task_queue.enqueue('process_bulk_certificates', idempotency_key=f"bulk_{cert_type_id}_{datetime.utcnow().strftime('%Y%m%d%H%M')}", user_ids=[
                                    u.id for u in eligible], certificate_type_id=cert_type_id, draft_id=draft_id)
     queued = len(eligible)
     db.session.commit()
@@ -68,7 +68,7 @@ def send_all_approved():
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
     db.session.flush()
-    current_app.task_queue.enqueue('process_bulk_certificates', user_ids=[
+    current_app.task_queue.enqueue('process_bulk_certificates', idempotency_key=f"bulk_all_{cert_type_id}_{datetime.utcnow().strftime('%Y%m%d%H%M')}", user_ids=[
                                    u.id for u in eligible], certificate_type_id=cert_type_id, draft_id=draft_id)
     queued = len(eligible)
     db.session.commit()
@@ -125,7 +125,7 @@ def retry_emails():
     for log_id in log_ids:
         log = db.session.get(EmailLog, log_id)
         if log and log.user_id:
-            current_app.task_queue.enqueue('generate_and_send_certificate', user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
+            current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{log.user_id}_{log.user.certificate_type_id}", user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
     return jsonify({'message': f'{len(log_ids)} emails queued for retry'})
 
 
@@ -167,7 +167,7 @@ def create_campaign():
     db.session.add(camp)
     db.session.commit()
     if send_now or scheduled_at:
-        current_app.task_queue.enqueue('process_campaign', campaign_id=camp.id, user_ids=[u.id for u in users], draft_id=draft_id)
+        current_app.task_queue.enqueue('process_campaign', idempotency_key=f"campaign_{camp.id}", campaign_id=camp.id, user_ids=[u.id for u in users], draft_id=draft_id)
         camp.recipient_count = len(users)
         db.session.commit()
     return jsonify({'id': camp.id, 'message': f'Campaign created ({len(users)} recipients)'})
@@ -187,7 +187,7 @@ def resend_campaign(cid):
     for log_id in log_ids:
         log = db.session.get(EmailLog, log_id)
         if log and log.user_id:
-            current_app.task_queue.enqueue('generate_and_send_certificate', user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
+            current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{log.user_id}_{log.user.certificate_type_id}", user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
     return jsonify({'message': f'{len(log_ids)} emails re-queued'})
 
 

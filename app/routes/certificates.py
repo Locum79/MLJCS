@@ -9,7 +9,8 @@ import os
 import json
 import io
 import csv
-from app.utils.paths import UPLOAD_ROOT, ensure_upload_root
+import hashlib
+from app.models import CertificateAsset
 bp = Blueprint('certificates', __name__)
 
 
@@ -65,10 +66,20 @@ def create_cert_type():
     ext = file.filename.rsplit('.', 1)[-1].lower()
     if ext not in ('pdf', 'png'):
         return (jsonify({'error': 'Only PDF or PNG allowed'}), 400)
-    ensure_upload_root()
-    filename = f'{uuid.uuid4().hex}.{ext}'
-    filepath = os.path.join(UPLOAD_ROOT, filename)
-    file.save(filepath)
+    
+    master_binary = file.read()
+    file_hash = hashlib.md5(master_binary).hexdigest()
+    asset_id = str(uuid.uuid4())
+    
+    asset = CertificateAsset(
+        id=asset_id,
+        name=file.filename,
+        file_binary=master_binary,
+        file_hash=file_hash
+    )
+    db.session.add(asset)
+    db.session.flush()
+
     overlay_coords = {'name_x': 150, 'name_y': 380, 'name_w': 500, 'name_h': 50, 'name_font_size': 28, 'name_align': 'center', 'cert_id_x': 400,
                       'cert_id_y': 80, 'cert_id_font_size': 9, 'date_x': 150, 'date_y': 200, 'date_font_size': 9, 'qr_x': 0, 'qr_y': 30, 'qr_size': 90}
     try:
@@ -77,15 +88,11 @@ def create_cert_type():
             overlay_coords.update(custom)
     except Exception:
         pass
-    try:
-        ocr_result = analyze_template(filepath, ext)
-    except Exception as ocr_err:
-        ocr_result = {'regions': [], 'message': f'OCR skipped: {ocr_err}'}
+        
+    ocr_result = {'regions': [], 'message': 'OCR skipped for DB asset'}
     token = str(uuid.uuid4())[:8]
-    file.seek(0)
-    master_binary = file.read()
-    file.seek(0)
-    ct = CertificateType(name=name, course_code=course_code, period=period, master_pdf_path=filepath, master_pdf_binary=master_binary, master_file_type=ext, overlay_coords=overlay_coords, ocr_regions=ocr_result.get(
+    
+    ct = CertificateType(name=name, course_code=course_code, period=period, asset_id=asset_id, master_pdf_path="", master_pdf_binary=None, master_file_type=ext, overlay_coords=overlay_coords, ocr_regions=ocr_result.get(
         'regions'), registration_token=token, email_message=request.form.get('email_message', '').strip() or None, email_subject=request.form.get('email_subject', '').strip() or None, seq_counter=0)
     db.session.add(ct)
     db.session.commit()
@@ -124,10 +131,7 @@ def delete_cert_type(ct_id):
 @login_required
 def reanalyze_template(ct_id):
     ct = CertificateType.query.get_or_404(ct_id)
-    result = analyze_template(ct.master_pdf_path, ct.master_file_type)
-    ct.ocr_regions = result.get('regions')
-    db.session.commit()
-    return jsonify({'regions': ct.ocr_regions, 'message': result.get('message')})
+    return jsonify({'regions': [], 'message': 'OCR disabled for DB assets'})
 
 
 @bp.route('/api/cert-types/<int:ct_id>/preview', methods=['POST'])
@@ -135,19 +139,19 @@ def reanalyze_template(ct_id):
 def preview_certificate(ct_id):
     from flask import send_file
     from app.engine.pdf_processor import generate_personalized_pdf
+    from app.domain.certificates.service import resolve_certificate_asset
     ct = CertificateType.query.get_or_404(ct_id)
     data = request.json or {}
     full_name = data.get('full_name', 'Jane Smith')
     cert_id = data.get('cert_id', 'MLJ-GEN-2026-000001')
     issue_date = data.get('issue_date', datetime.utcnow().strftime('%d %B %Y'))
     include_qr = data.get('include_qr', True)
-    if not os.path.isfile(ct.master_pdf_path):
-        return (jsonify({'error': f'Master template not found: {ct.master_pdf_path}. Please upload a master template for "{ct.name}" via the admin panel before generating certificates.'}), 400)
     try:
-        pdf_bytes = generate_personalized_pdf(master_pdf_path=ct.master_pdf_path, overlay_coords=ct.overlay_coords, full_name=full_name,
+        template_binary = resolve_certificate_asset(ct)
+        pdf_bytes = generate_personalized_pdf(template_binary=template_binary, overlay_coords=ct.overlay_coords, full_name=full_name,
                                               certificate_id=cert_id, issuance_date=issue_date, include_qr=include_qr, cert_name=ct.name, master_file_type=ct.master_file_type or 'pdf')
-    except FileNotFoundError:
-        return (jsonify({'error': 'Master certificate file missing.'}), 404)
+    except RuntimeError as e:
+        return (jsonify({'error': str(e)}), 404)
     except Exception as e:
         return (jsonify({'error': f'Failed to generate preview: {str(e)}'}), 500)
     return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name=f'preview_{ct_id}.pdf')
@@ -295,7 +299,7 @@ def send_certificates():
     for user in users:
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
-        current_app.task_queue.enqueue('generate_and_send_certificate', user_id=user.id,
+        current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{user.id}_{cert_type_id}", user_id=user.id,
                                        certificate_type_id=cert_type_id, draft_id=draft_id, job_timeout=300)
         queued += 1
     db.session.add(AuditLog(action='batch_send_initiated', performed_by=current_user.email,
@@ -330,7 +334,7 @@ def send_all_approved():
     for user in users:
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
-        current_app.task_queue.enqueue('generate_and_send_certificate', user_id=user.id,
+        current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{user.id}_{cert_type_id}", user_id=user.id,
                                        certificate_type_id=cert_type_id, draft_id=draft_id, job_timeout=300)
     db.session.add(AuditLog(action='send_all_approved', performed_by=current_user.email,
                    details={'count': len(users), 'cert_type_id': cert_type_id}))
@@ -342,7 +346,7 @@ def send_all_approved():
 @login_required
 def nudge_user():
     uid = request.json['user_id']
-    current_app.task_queue.enqueue('send_nudge_email', user_id=uid, job_timeout=30)
+    current_app.task_queue.enqueue('send_nudge_email', idempotency_key=f"nudge_{uid}_{datetime.utcnow().strftime('%Y%m%d')}", user_id=uid, job_timeout=30)
     return jsonify({'message': 'Reminder queued'})
 
 
@@ -435,7 +439,7 @@ def create_campaign():
     db.session.add(campaign)
     db.session.commit()
     if send_now:
-        current_app.task_queue.enqueue('process_campaign', campaign_id=campaign.id,
+        current_app.task_queue.enqueue('process_campaign', idempotency_key=f"campaign_{campaign.id}", campaign_id=campaign.id,
                                        user_ids=user_ids, draft_id=draft_id, job_timeout=600)
         campaign.status = 'scheduled'
         db.session.commit()
