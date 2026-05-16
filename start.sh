@@ -1,8 +1,7 @@
 #!/bin/sh
-set -e
-
-echo "==> Running Alembic migrations..."
+# MLJCS Production Startup Script
+echo "Starting Production Migrations..."
 python migrate.py
 
-echo "==> Starting gunicorn..."
-exec gunicorn wsgi:app --bind "0.0.0.0:${PORT:-8080}" --workers 1 --timeout 120
+echo "Launching Application..."
+gunicorn --bind 0.0.0.0:${PORT:-8080} wsgi:app

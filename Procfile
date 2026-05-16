@@ -1,1 +1,2 @@
-web: sh start.sh
+release: python migrate.py
+web: gunicorn wsgi:app

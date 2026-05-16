@@ -1,3 +1,4 @@
+from app import create_app, db
 import os
 import sys
 from logging.config import fileConfig
@@ -27,12 +28,9 @@ if database_url.startswith('postgres://'):
 # configparser requires % escaped as %%
 config.set_main_option('sqlalchemy.url', database_url.replace('%', '%%'))
 
-from app.models import (  # noqa: F401
-    Admin, OrgSettings, CertificateType, User,
-    CertArchive, EmailDraft, Campaign, AuditLog, EmailLog,
-)
-from app import db  # noqa
 
+_app = create_app()
+_app.app_context().push()
 target_metadata = db.metadata
 
 

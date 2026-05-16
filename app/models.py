@@ -2,7 +2,6 @@ from app import db
 from flask_login import UserMixin
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-import json
 
 
 class Admin(UserMixin, db.Model):
@@ -10,6 +9,9 @@ class Admin(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(255), unique=True, nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
+
+    def __init__(self, **kwargs):
+        super(Admin, self).__init__(**kwargs)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -27,6 +29,9 @@ class OrgSettings(db.Model):
     reply_to_email = db.Column(db.String(255), default='')
     verify_base_url = db.Column(db.String(500), default='')
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super(OrgSettings, self).__init__(**kwargs)
 
 
 class CertificateType(db.Model):
@@ -47,6 +52,8 @@ class CertificateType(db.Model):
     seq_counter = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    def __init__(self, **kwargs):
+        super(CertificateType, self).__init__(**kwargs)
     users = db.relationship('User', backref='certificate_type', lazy=True)
 
 
@@ -70,14 +77,17 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     unsubscribed = db.Column(db.Boolean, default=False)
 
+    def __init__(self, **kwargs):
+        super(User, self).__init__(**kwargs)
+
     @property
     def full_name(self):
         parts = [self.first_name, self.other_name or '', self.surname]
-        return ' '.join(p for p in parts if p and p.strip())
+        return ' '.join((p for p in parts if p and p.strip()))
 
     @property
     def initials(self):
-        return ''.join(p[0].upper() for p in [self.first_name, self.surname] if p)
+        return ''.join((p[0].upper() for p in [self.first_name, self.surname] if p))
 
 
 class CertArchive(db.Model):
@@ -94,15 +104,11 @@ class CertArchive(db.Model):
     pdf_binary = db.Column(db.LargeBinary, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    def __init__(self, **kwargs):
+        super(CertArchive, self).__init__(**kwargs)
+
     def to_dict(self):
-        return {
-            'certificate_id': self.certificate_id,
-            'full_name': self.full_name,
-            'cert_name': self.cert_name,
-            'course_code': self.course_code,
-            'issued_date': self.issued_date,
-            'status': self.status,
-        }
+        return {'certificate_id': self.certificate_id, 'full_name': self.full_name, 'cert_name': self.cert_name, 'course_code': self.course_code, 'issued_date': self.issued_date, 'status': self.status}
 
 
 class EmailDraft(db.Model):
@@ -116,6 +122,9 @@ class EmailDraft(db.Model):
     is_default = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super(EmailDraft, self).__init__(**kwargs)
 
 
 class Campaign(db.Model):
@@ -134,6 +143,9 @@ class Campaign(db.Model):
     created_by = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    def __init__(self, **kwargs):
+        super(Campaign, self).__init__(**kwargs)
+
 
 class AuditLog(db.Model):
     __tablename__ = 'audit_logs'
@@ -144,20 +156,26 @@ class AuditLog(db.Model):
     details = db.Column(db.JSON)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    def __init__(self, **kwargs):
+        super(AuditLog, self).__init__(**kwargs)
+
 
 class EmailLog(db.Model):
     __tablename__ = 'email_logs'
-    id               = db.Column(db.Integer, primary_key=True)
-    recipient_email  = db.Column(db.String(255), nullable=False)
-    recipient_name   = db.Column(db.String(300), nullable=True)
-    email_type       = db.Column(db.String(30), default='certificate')
-    status           = db.Column(db.String(20), default='pending')
-    user_id          = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-    cert_type_id     = db.Column(db.Integer, db.ForeignKey('certificate_types.id', ondelete='SET NULL'), nullable=True)
-    draft_id         = db.Column(db.Integer, db.ForeignKey('email_drafts.id', ondelete='SET NULL'), nullable=True)
-    campaign_id      = db.Column(db.Integer, db.ForeignKey('campaigns.id', ondelete='SET NULL'), nullable=True)
-    failed_reason    = db.Column(db.Text, nullable=True)
-    retry_count      = db.Column(db.Integer, default=0)
-    started_at       = db.Column(db.DateTime, nullable=True)
-    sent_at          = db.Column(db.DateTime, nullable=True)
-    created_at       = db.Column(db.DateTime, default=datetime.utcnow)
+    id = db.Column(db.Integer, primary_key=True)
+    recipient_email = db.Column(db.String(255), nullable=False)
+    recipient_name = db.Column(db.String(300), nullable=True)
+    email_type = db.Column(db.String(30), default='certificate')
+    status = db.Column(db.String(20), default='pending')
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    cert_type_id = db.Column(db.Integer, db.ForeignKey('certificate_types.id', ondelete='SET NULL'), nullable=True)
+    draft_id = db.Column(db.Integer, db.ForeignKey('email_drafts.id', ondelete='SET NULL'), nullable=True)
+    campaign_id = db.Column(db.Integer, db.ForeignKey('campaigns.id', ondelete='SET NULL'), nullable=True)
+    failed_reason = db.Column(db.Text, nullable=True)
+    retry_count = db.Column(db.Integer, default=0)
+    started_at = db.Column(db.DateTime, nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kwargs):
+        super(EmailLog, self).__init__(**kwargs)

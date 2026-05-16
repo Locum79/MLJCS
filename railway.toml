@@ -1,5 +1,5 @@
 [build]
-builder = "nixpacks"
+builder = "dockerfile"
 
 [deploy]
 numReplicas = 1
@@ -7,7 +7,3 @@ startCommand = "sh start.sh"
 
 [service]
 port = 8080
-
-[[mounts]]
-mountPath = "/app/uploads"
-repository = "uploads"
