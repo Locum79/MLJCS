@@ -26,30 +26,9 @@ def dashboard():
 @bp.route('/admin/truth/certificates/<cert_id>')
 @login_required
 def resolve_certificate_truth(cert_id):
-    from app.models import Certificate, JobEventLog
-    cert = Certificate.query.get_or_404(cert_id)
-    events = JobEventLog.query.filter_by(cert_id=cert_id).order_by(JobEventLog.time.asc()).all()
-
-    has_pdf = cert.pdf_artifact is not None
-    has_sendgrid_id = cert.sendgrid_message_id is not None
-
-    if not has_pdf and cert.status in ["GENERATED", "READY_FOR_DISPATCH"]:
-        derived_state = "CORRUPTED_GENERATION"
-    elif has_pdf and not has_sendgrid_id and cert.status == "SENT":
-        derived_state = "FALSE_SUCCESS_DETECTED"
-    elif cert.status == "FAILED_DISPATCH" and has_sendgrid_id:
-        derived_state = "LOGIC_CONFLICT"
-    else:
-        derived_state = cert.status
-
-    return jsonify({
-        "stored_state": cert.status,
-        "derived_state": derived_state,
-        "artifact_present": has_pdf,
-        "send_verified": has_sendgrid_id,
-        "event_trace": [{"state": e.state, "time": e.time.isoformat(), "details": e.details} for e in events],
-        "integrity": derived_state == cert.status
-    })
+    from app.engine.clp import resolve_truth
+    result = resolve_truth(cert_id)
+    return jsonify(result)
 
 
 @bp.route('/api/org', methods=['GET'])
@@ -341,6 +320,7 @@ def send_certificates():
                 status=CertificateStatus.DRAFT
             )
             db.session.add(cert)
+            cert._log_event("CERT_CREATED")
             db.session.commit()
 
         # Transition to APPROVED_FOR_GENERATION
@@ -404,6 +384,7 @@ def send_all_approved():
                 status=CertificateStatus.DRAFT
             )
             db.session.add(cert)
+            cert._log_event("CERT_CREATED")
             db.session.commit()
 
         if cert.status == CertificateStatus.DRAFT:

@@ -228,16 +228,20 @@ class EmailLog(db.Model):
         super(EmailLog, self).__init__(**kwargs)
 
 
-class JobEventLog(db.Model):
-    __tablename__ = 'job_event_logs'
-    id = db.Column(db.Integer, primary_key=True)
-    cert_id = db.Column(db.String(60), db.ForeignKey('certificates.id'), nullable=False)
-    state = db.Column(db.String(50), nullable=False)
-    time = db.Column(db.DateTime, default=datetime.utcnow)
-    details = db.Column(db.JSON, nullable=True)
+class CertificateLedgerEntry(db.Model):
+    __tablename__ = 'certificate_ledger'
+
+    id = db.Column(db.String(36), primary_key=True)
+    cert_id = db.Column(db.String(60), db.ForeignKey('certificates.id'), index=True, nullable=False)
+    event_type = db.Column(db.String(50), nullable=False)
+    payload = db.Column(db.JSON, nullable=True)
+    prev_hash = db.Column(db.String(128), nullable=False)
+    entry_hash = db.Column(db.String(128), unique=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    signature = db.Column(db.String(128), nullable=True)
 
     def __init__(self, **kwargs):
-        super(JobEventLog, self).__init__(**kwargs)
+        super(CertificateLedgerEntry, self).__init__(**kwargs)
 
 
 class Certificate(db.Model):
@@ -262,16 +266,16 @@ class Certificate(db.Model):
     def __init__(self, **kwargs):
         super(Certificate, self).__init__(**kwargs)
 
-    def _log_event(self, state, details=None):
-        event = JobEventLog(cert_id=self.id, state=state, details=details)
-        db.session.add(event)
+    def _log_event(self, event_type, payload=None):
+        from app.engine.clp import append_ledger_event
+        append_ledger_event(self.id, event_type, payload)
 
     def transition_to_approved(self):
         if self.status != CertificateStatus.DRAFT:
             raise RuntimeError(f"Invalid transition to APPROVED from {self.status}")
         self.status = CertificateStatus.APPROVED_FOR_GENERATION
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status)
+        self._log_event("APPROVED")
 
     def transition_to_generating(self):
         valid_states = [CertificateStatus.APPROVED_FOR_GENERATION, CertificateStatus.FAILED_GENERATION]
@@ -279,7 +283,7 @@ class Certificate(db.Model):
             raise RuntimeError(f"Invalid transition to GENERATING from {self.status}")
         self.status = CertificateStatus.GENERATING
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status)
+        self._log_event("GENERATION_STARTED")
 
     def transition_to_generated(self, pdf_bytes, pdf_hash):
         if self.status != CertificateStatus.GENERATING:
@@ -290,21 +294,21 @@ class Certificate(db.Model):
         self.pdf_hash = pdf_hash
         self.status = CertificateStatus.GENERATED
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status, details={"pdf_hash": pdf_hash})
+        self._log_event("GENERATION_COMPLETED", payload={"pdf_hash": pdf_hash})
 
     def transition_to_ready(self):
         if self.status != CertificateStatus.GENERATED:
             raise RuntimeError(f"Invalid transition to READY from {self.status}")
         self.status = CertificateStatus.READY_FOR_DISPATCH
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status)
+        self._log_event("READY_FOR_DISPATCH")
 
     def transition_to_queued(self):
         if self.status != CertificateStatus.READY_FOR_DISPATCH:
             raise RuntimeError(f"Invalid transition to QUEUED from {self.status}")
         self.status = CertificateStatus.QUEUED_FOR_DISPATCH
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status)
+        self._log_event("QUEUED")
 
     def transition_to_dispatching(self):
         valid_states = [CertificateStatus.QUEUED_FOR_DISPATCH, CertificateStatus.FAILED_DISPATCH]
@@ -312,7 +316,7 @@ class Certificate(db.Model):
             raise RuntimeError(f"Invalid transition to DISPATCHING from {self.status}")
         self.status = CertificateStatus.DISPATCHING
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status)
+        self._log_event("DISPATCH_STARTED")
 
     def transition_to_sent(self, message_id):
         if self.status != CertificateStatus.DISPATCHING:
@@ -322,7 +326,7 @@ class Certificate(db.Model):
         self.sendgrid_message_id = message_id
         self.status = CertificateStatus.SENT
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status, details={"message_id": message_id})
+        self._log_event("DISPATCH_CONFIRMED", payload={"message_id": message_id})
 
     def fail_generation(self, error):
         self.failure_count += 1
@@ -332,7 +336,7 @@ class Certificate(db.Model):
         else:
             self.status = CertificateStatus.FAILED_GENERATION
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status, details={"error": str(error)})
+        self._log_event("GENERATION_FAILED", payload={"error": str(error)})
 
     def fail_dispatch(self, error):
         self.failure_count += 1
@@ -342,5 +346,5 @@ class Certificate(db.Model):
         else:
             self.status = CertificateStatus.FAILED_DISPATCH
         self.updated_at = datetime.utcnow()
-        self._log_event(self.status, details={"error": str(error)})
+        self._log_event("DISPATCH_FAILED", payload={"error": str(error)})
 
