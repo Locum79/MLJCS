@@ -294,14 +294,41 @@ def send_certificates():
         default_draft = EmailDraft.query.filter_by(is_default=True).first()
         if not default_draft:
             return (jsonify({'error': 'No email template configured. Please provide a message in the Certificate Type settings or create a default Email Draft.'}), 400)
+    from app.models import Certificate, CertificateStatus
     users = User.query.filter(User.id.in_(user_ids), User.status == 'approved').all()
     queued = 0
     for user in users:
-        user.status = 'sending'
-        user.sent_at = datetime.utcnow()
-        current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{user.id}_{cert_type_id}", user_id=user.id,
-                                       certificate_type_id=cert_type_id, draft_id=draft_id, job_timeout=300)
-        queued += 1
+        # Ensure Certificate record exists (IDEMPOTENT)
+        if not user.certificate_id:
+            assign_certificate_id(user)
+            db.session.commit()
+
+        cert = Certificate.query.get(user.certificate_id)
+        if not cert:
+            cert = Certificate(
+                id=user.certificate_id,
+                user_id=user.id,
+                cert_type_id=cert_type_id,
+                status=CertificateStatus.DRAFT
+            )
+            db.session.add(cert)
+            db.session.commit()
+
+        # Transition to APPROVED_FOR_GENERATION
+        if cert.status == CertificateStatus.DRAFT:
+            cert.transition_to_approved()
+            db.session.commit()
+
+        # Trigger generation flow
+        if cert.status == CertificateStatus.APPROVED_FOR_GENERATION:
+            current_app.task_queue.enqueue(
+                'generate_certificate', 
+                idempotency_key=f"cert_{user.id}_{cert_type_id}", 
+                certificate_id=cert.id,
+                draft_id=draft_id
+            )
+            queued += 1
+
     db.session.add(AuditLog(action='batch_send_initiated', performed_by=current_user.email,
                    details={'count': queued, 'cert_type_id': cert_type_id}))
     db.session.commit()
@@ -331,15 +358,42 @@ def send_all_approved():
         default_draft = EmailDraft.query.filter_by(is_default=True).first()
         if not default_draft:
             return (jsonify({'error': 'No email template configured. Please provide a message in the Certificate Type settings or create a default Email Draft.'}), 400)
+    from app.models import Certificate, CertificateStatus
+    queued = 0
     for user in users:
-        user.status = 'sending'
-        user.sent_at = datetime.utcnow()
-        current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{user.id}_{cert_type_id}", user_id=user.id,
-                                       certificate_type_id=cert_type_id, draft_id=draft_id, job_timeout=300)
+        # Ensure Certificate record exists
+        if not user.certificate_id:
+            assign_certificate_id(user)
+            db.session.commit()
+
+        cert = Certificate.query.get(user.certificate_id)
+        if not cert:
+            cert = Certificate(
+                id=user.certificate_id,
+                user_id=user.id,
+                cert_type_id=cert_type_id,
+                status=CertificateStatus.DRAFT
+            )
+            db.session.add(cert)
+            db.session.commit()
+
+        if cert.status == CertificateStatus.DRAFT:
+            cert.transition_to_approved()
+            db.session.commit()
+
+        if cert.status == CertificateStatus.APPROVED_FOR_GENERATION:
+            current_app.task_queue.enqueue(
+                'generate_certificate', 
+                idempotency_key=f"cert_{user.id}_{cert_type_id}", 
+                certificate_id=cert.id,
+                draft_id=draft_id
+            )
+            queued += 1
+
     db.session.add(AuditLog(action='send_all_approved', performed_by=current_user.email,
-                   details={'count': len(users), 'cert_type_id': cert_type_id}))
+                   details={'count': queued, 'cert_type_id': cert_type_id}))
     db.session.commit()
-    return jsonify({'message': f'{len(users)} certificates queued for dispatch'})
+    return jsonify({'message': f'{queued} certificates queued for dispatch'})
 
 
 @bp.route('/api/nudge', methods=['POST'])

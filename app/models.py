@@ -1,7 +1,23 @@
 from app import db
 from flask_login import UserMixin
 from datetime import datetime
+import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
+
+
+class CertificateStatus:
+    DRAFT = "DRAFT"
+    APPROVED_FOR_GENERATION = "APPROVED_FOR_GENERATION"
+    GENERATING = "GENERATING"
+    READY_FOR_DISPATCH = "READY_FOR_DISPATCH"
+    QUEUED_FOR_DISPATCH = "QUEUED_FOR_DISPATCH"
+    SENDING = "SENDING"
+    SENT = "SENT"
+    DELIVERED_CONFIRMED = "DELIVERED_CONFIRMED"
+    
+    GENERATION_FAILED = "GENERATION_FAILED"
+    DISPATCH_FAILED = "DISPATCH_FAILED"
+    PERMANENTLY_FAILED = "PERMANENTLY_FAILED"
 
 
 class JobQueue(db.Model):
@@ -209,3 +225,83 @@ class EmailLog(db.Model):
 
     def __init__(self, **kwargs):
         super(EmailLog, self).__init__(**kwargs)
+
+
+class Certificate(db.Model):
+    __tablename__ = 'certificates'
+    id = db.Column(db.String(60), primary_key=True) # certificate_id
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    cert_type_id = db.Column(db.Integer, db.ForeignKey('certificate_types.id'), nullable=False)
+    template_version = db.Column(db.String(50), nullable=True)
+    asset_id = db.Column(db.String(36), nullable=True)
+    status = db.Column(db.String(30), default=CertificateStatus.DRAFT)
+    pdf_artifact = db.Column(db.LargeBinary, nullable=True)
+    failure_count = db.Column(db.Integer, default=0)
+    last_error = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('certificate_records', lazy=True))
+    cert_type = db.relationship('CertificateType')
+
+    def __init__(self, **kwargs):
+        super(Certificate, self).__init__(**kwargs)
+
+    def transition_to_approved(self):
+        if self.status != CertificateStatus.DRAFT:
+            raise RuntimeError(f"Invalid transition to APPROVED from {self.status}")
+        self.status = CertificateStatus.APPROVED_FOR_GENERATION
+        self.updated_at = datetime.utcnow()
+
+    def transition_to_generating(self):
+        valid_states = [CertificateStatus.APPROVED_FOR_GENERATION, CertificateStatus.GENERATION_FAILED]
+        if self.status not in valid_states:
+            raise RuntimeError(f"Invalid transition to GENERATING from {self.status}")
+        self.status = CertificateStatus.GENERATING
+        self.updated_at = datetime.utcnow()
+
+    def transition_to_ready(self, pdf_bytes):
+        if self.status != CertificateStatus.GENERATING:
+            raise RuntimeError(f"Invalid transition to READY from {self.status}")
+        if not pdf_bytes:
+            raise ValueError("READY_FOR_DISPATCH requires finalized PDF artifact")
+        self.pdf_artifact = pdf_bytes
+        self.status = CertificateStatus.READY_FOR_DISPATCH
+        self.updated_at = datetime.utcnow()
+
+    def transition_to_queued(self):
+        if self.status != CertificateStatus.READY_FOR_DISPATCH:
+            raise RuntimeError(f"Invalid transition to QUEUED from {self.status}")
+        self.status = CertificateStatus.QUEUED_FOR_DISPATCH
+        self.updated_at = datetime.utcnow()
+
+    def transition_to_sending(self):
+        valid_states = [CertificateStatus.QUEUED_FOR_DISPATCH, CertificateStatus.DISPATCH_FAILED]
+        if self.status not in valid_states:
+            raise RuntimeError(f"Invalid transition to SENDING from {self.status}")
+        self.status = CertificateStatus.SENDING
+        self.updated_at = datetime.utcnow()
+
+    def transition_to_sent(self):
+        if self.status != CertificateStatus.SENDING:
+            raise RuntimeError(f"Invalid transition to SENT from {self.status}")
+        self.status = CertificateStatus.SENT
+        self.updated_at = datetime.utcnow()
+
+    def fail_generation(self, error):
+        self.failure_count += 1
+        self.last_error = str(error)
+        if self.failure_count >= 5:
+            self.status = CertificateStatus.PERMANENTLY_FAILED
+        else:
+            self.status = CertificateStatus.GENERATION_FAILED
+        self.updated_at = datetime.utcnow()
+
+    def fail_dispatch(self, error):
+        self.failure_count += 1
+        self.last_error = str(error)
+        if self.failure_count >= 5:
+            self.status = CertificateStatus.PERMANENTLY_FAILED
+        else:
+            self.status = CertificateStatus.DISPATCH_FAILED
+        self.updated_at = datetime.utcnow()

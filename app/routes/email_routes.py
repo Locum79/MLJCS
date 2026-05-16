@@ -38,10 +38,9 @@ def send_emails():
     eligible = User.query.filter(User.id.in_(user_ids), User.status == 'approved').all() if user_ids else []
     if not confirmed:
         return jsonify({'needs_confirmation': True, 'recipient_count': len(eligible), 'course': ct.name, 'period': ct.period, 'sender': f"{org.sender_name} <{org.sender_email or current_app.config.get('MAIL_USERNAME', '')}>", 'cert_count': len(eligible), 'send_rate': send_rate, 'est_minutes': round(len(eligible) / max(send_rate, 1), 1)})
-    for user in eligible:
-        user.status = 'sending'
-        user.sent_at = datetime.utcnow()
+    # No longer setting user.status = 'sending' here
     db.session.flush()
+
     current_app.task_queue.enqueue('process_bulk_certificates', idempotency_key=f"bulk_{cert_type_id}_{datetime.utcnow().strftime('%Y%m%d%H%M')}", user_ids=[
                                    u.id for u in eligible], certificate_type_id=cert_type_id, draft_id=draft_id)
     queued = len(eligible)
@@ -64,10 +63,9 @@ def send_all_approved():
         return jsonify({'needs_confirmation': True, 'recipient_count': len(eligible), 'course': ct.name, 'period': ct.period, 'sender': f"{org.sender_name} <{org.sender_email or current_app.config.get('MAIL_USERNAME', '')}>", 'cert_count': len(eligible), 'send_rate': send_rate, 'est_minutes': round(len(eligible) / max(send_rate, 1), 1)})
     if not eligible:
         return jsonify({'message': 'No approved participants found', 'queued': 0})
-    for user in eligible:
-        user.status = 'sending'
-        user.sent_at = datetime.utcnow()
+    # No longer setting user.status = 'sending' here
     db.session.flush()
+
     current_app.task_queue.enqueue('process_bulk_certificates', idempotency_key=f"bulk_all_{cert_type_id}_{datetime.utcnow().strftime('%Y%m%d%H%M')}", user_ids=[
                                    u.id for u in eligible], certificate_type_id=cert_type_id, draft_id=draft_id)
     queued = len(eligible)
@@ -122,10 +120,28 @@ def retry_emails():
     log_ids = request.json.get('log_ids', [])
     if not log_ids:
         return (jsonify({'error': 'No log IDs provided'}), 400)
+    from app.models import Certificate, CertificateStatus
     for log_id in log_ids:
         log = db.session.get(EmailLog, log_id)
         if log and log.user_id:
-            current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{log.user_id}_{log.user.certificate_type_id}", user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
+            user = log.user
+            cert = Certificate.query.get(user.certificate_id) if user.certificate_id else None
+            
+            if cert and cert.status in [CertificateStatus.READY_FOR_DISPATCH, CertificateStatus.DISPATCH_FAILED]:
+                # If generation was successful, just retry dispatch
+                current_app.task_queue.enqueue(
+                    'dispatch_certificate', 
+                    idempotency_key=f"cert_{cert.id}_dispatch_{datetime.utcnow().strftime('%Y%m%d%H%M')}", 
+                    certificate_id=cert.id
+                )
+            else:
+                # Otherwise restart from generation
+                current_app.task_queue.enqueue(
+                    'process_bulk_certificates', 
+                    idempotency_key=f"retry_{user.id}_{datetime.utcnow().strftime('%Y%m%d%H%M')}", 
+                    user_ids=[user.id], 
+                    certificate_type_id=user.certificate_type_id
+                )
     return jsonify({'message': f'{len(log_ids)} emails queued for retry'})
 
 
@@ -184,10 +200,26 @@ def get_campaign_stats(cid):
 def resend_campaign(cid):
     failed = EmailLog.query.filter_by(campaign_id=cid, status='failed').all()
     log_ids = [l.id for l in failed]
+    from app.models import Certificate, CertificateStatus
     for log_id in log_ids:
         log = db.session.get(EmailLog, log_id)
         if log and log.user_id:
-            current_app.task_queue.enqueue('generate_and_send_certificate', idempotency_key=f"cert_{log.user_id}_{log.user.certificate_type_id}", user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
+            user = log.user
+            cert = Certificate.query.get(user.certificate_id) if user.certificate_id else None
+            
+            if cert and cert.status in [CertificateStatus.READY_FOR_DISPATCH, CertificateStatus.DISPATCH_FAILED]:
+                current_app.task_queue.enqueue(
+                    'dispatch_certificate', 
+                    idempotency_key=f"cert_{cert.id}_dispatch_{datetime.utcnow().strftime('%Y%m%d%H%M')}", 
+                    certificate_id=cert.id
+                )
+            else:
+                current_app.task_queue.enqueue(
+                    'process_bulk_certificates', 
+                    idempotency_key=f"resend_{user.id}_{datetime.utcnow().strftime('%Y%m%d%H%M')}", 
+                    user_ids=[user.id], 
+                    certificate_type_id=user.certificate_type_id
+                )
     return jsonify({'message': f'{len(log_ids)} emails re-queued'})
 
 
