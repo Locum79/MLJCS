@@ -3,7 +3,25 @@ from flask_login import login_required, current_user
 from app.models import db, User, CertificateType, EmailLog, Campaign, OrgSettings, CertArchive
 from datetime import datetime
 import json
+from sqlalchemy import func
+
 bp = Blueprint('email_routes', __name__)
+
+def summary_stats(cert_type_id=None):
+    q = db.session.query(EmailLog.status, func.count(EmailLog.id)).group_by(EmailLog.status)
+    if cert_type_id:
+        q = q.join(User).filter(User.certificate_type_id == cert_type_id)
+    return {status: count for status, count in q.all()}
+
+def failed_logs(limit=100):
+    logs = EmailLog.query.filter_by(status='failed').order_by(EmailLog.created_at.desc()).limit(limit).all()
+    return [{'id': l.id, 'recipient_email': l.recipient_email, 'failed_reason': l.failed_reason, 'sent_at': l.sent_at} for l in logs]
+
+def campaign_stats(cid):
+    c = db.session.get(Campaign, cid)
+    if not c: return {}
+    return {'sent': c.sent_count, 'failed': c.failed_count, 'total': c.recipient_count}
+
 
 
 @bp.route('/api/email/send', methods=['POST'])
@@ -24,7 +42,7 @@ def send_emails():
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
     db.session.flush()
-    current_app.task_queue.enqueue('app.worker.process_bulk_certificates', user_ids=[
+    current_app.task_queue.enqueue('process_bulk_certificates', user_ids=[
                                    u.id for u in eligible], certificate_type_id=cert_type_id, draft_id=draft_id)
     queued = len(eligible)
     db.session.commit()
@@ -50,7 +68,7 @@ def send_all_approved():
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
     db.session.flush()
-    current_app.task_queue.enqueue('app.worker.process_bulk_certificates', user_ids=[
+    current_app.task_queue.enqueue('process_bulk_certificates', user_ids=[
                                    u.id for u in eligible], certificate_type_id=cert_type_id, draft_id=draft_id)
     queued = len(eligible)
     db.session.commit()
@@ -104,8 +122,11 @@ def retry_emails():
     log_ids = request.json.get('log_ids', [])
     if not log_ids:
         return (jsonify({'error': 'No log IDs provided'}), 400)
-    retried = email_queue.retry_failed(log_ids)
-    return jsonify({'message': f'{retried} emails queued for retry'})
+    for log_id in log_ids:
+        log = db.session.get(EmailLog, log_id)
+        if log and log.user_id:
+            current_app.task_queue.enqueue('generate_and_send_certificate', user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
+    return jsonify({'message': f'{len(log_ids)} emails queued for retry'})
 
 
 @bp.route('/api/email/campaigns', methods=['GET'])
@@ -146,9 +167,8 @@ def create_campaign():
     db.session.add(camp)
     db.session.commit()
     if send_now or scheduled_at:
-        queued = email_queue.enqueue_campaign_batch(campaign_id=camp.id, user_ids=[
-                                                    u.id for u in users], draft_id=draft_id, send_rate=send_rate, scheduled_at=scheduled_at)
-        camp.recipient_count = queued
+        current_app.task_queue.enqueue('process_campaign', campaign_id=camp.id, user_ids=[u.id for u in users], draft_id=draft_id)
+        camp.recipient_count = len(users)
         db.session.commit()
     return jsonify({'id': camp.id, 'message': f'Campaign created ({len(users)} recipients)'})
 
@@ -164,8 +184,11 @@ def get_campaign_stats(cid):
 def resend_campaign(cid):
     failed = EmailLog.query.filter_by(campaign_id=cid, status='failed').all()
     log_ids = [l.id for l in failed]
-    retried = email_queue.retry_failed(log_ids)
-    return jsonify({'message': f'{retried} emails re-queued'})
+    for log_id in log_ids:
+        log = db.session.get(EmailLog, log_id)
+        if log and log.user_id:
+            current_app.task_queue.enqueue('generate_and_send_certificate', user_id=log.user_id, certificate_type_id=log.user.certificate_type_id)
+    return jsonify({'message': f'{len(log_ids)} emails re-queued'})
 
 
 @bp.route('/unsubscribe/<int:user_id>', methods=['GET', 'POST'])

@@ -295,7 +295,7 @@ def send_certificates():
     for user in users:
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
-        current_app.task_queue.enqueue('app.worker.generate_and_send_certificate', user_id=user.id,
+        current_app.task_queue.enqueue('generate_and_send_certificate', user_id=user.id,
                                        certificate_type_id=cert_type_id, draft_id=draft_id, job_timeout=300)
         queued += 1
     db.session.add(AuditLog(action='batch_send_initiated', performed_by=current_user.email,
@@ -330,7 +330,7 @@ def send_all_approved():
     for user in users:
         user.status = 'sending'
         user.sent_at = datetime.utcnow()
-        current_app.task_queue.enqueue('app.worker.generate_and_send_certificate', user_id=user.id,
+        current_app.task_queue.enqueue('generate_and_send_certificate', user_id=user.id,
                                        certificate_type_id=cert_type_id, draft_id=draft_id, job_timeout=300)
     db.session.add(AuditLog(action='send_all_approved', performed_by=current_user.email,
                    details={'count': len(users), 'cert_type_id': cert_type_id}))
@@ -342,7 +342,7 @@ def send_all_approved():
 @login_required
 def nudge_user():
     uid = request.json['user_id']
-    current_app.task_queue.enqueue('app.worker.send_nudge_email', user_id=uid, job_timeout=30)
+    current_app.task_queue.enqueue('send_nudge_email', user_id=uid, job_timeout=30)
     return jsonify({'message': 'Reminder queued'})
 
 
@@ -435,7 +435,7 @@ def create_campaign():
     db.session.add(campaign)
     db.session.commit()
     if send_now:
-        current_app.task_queue.enqueue('app.worker.process_campaign', campaign_id=campaign.id,
+        current_app.task_queue.enqueue('process_campaign', campaign_id=campaign.id,
                                        user_ids=user_ids, draft_id=draft_id, job_timeout=600)
         campaign.status = 'scheduled'
         db.session.commit()

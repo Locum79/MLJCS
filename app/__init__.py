@@ -26,6 +26,13 @@ def create_app():
     app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_DEFAULT_SENDER')
     mail.init_app(app)
     task_queue.init_app(app)
+    
+    from app.bootstrap.tasks import bootstrap_tasks
+    from app.registry.validate import validate_tasks
+    
+    bootstrap_tasks()
+    validate_tasks()
+    
     from app.utils.paths import ensure_upload_root
     ensure_upload_root()
     from app.routes import auth, registration, certificates

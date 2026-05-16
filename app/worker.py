@@ -125,3 +125,14 @@ def process_campaign(campaign_id: int, user_ids: list, draft_id: int):
         campaign.status = 'sent'
         campaign.sent_at = datetime.utcnow()
         db.session.commit()
+
+
+def process_bulk_certificates(user_ids: list, certificate_type_id: int, draft_id: int = None):
+    for uid in user_ids:
+        try:
+            generate_and_send_certificate(user_id=uid, certificate_type_id=certificate_type_id, draft_id=draft_id)
+        except Exception as e:
+            logger.error(f"Bulk processing failed for user_id={uid}: {e}")
+
+
+__all__ = ["process_bulk_certificates", "generate_and_send_certificate", "process_campaign", "send_nudge_email"]

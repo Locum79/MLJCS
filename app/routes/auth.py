@@ -25,8 +25,10 @@ def login():
                 db.session.commit()
             login_user(admin)
             return redirect(url_for('certificates.dashboard'))
-        admin = Admin.query.filter(db.or_(Admin.email == identifier, Admin.email ==
-                                   identifier.split('@')[0] if '@' not in identifier else identifier)).first()
+        admin = Admin.query.filter(db.or_(
+            Admin.email == identifier,
+            Admin.email == (identifier.split('@')[0] if '@' not in identifier else identifier)
+        )).first()
         if admin and admin.check_password(password):
             login_user(admin)
             return redirect(url_for('certificates.dashboard'))
