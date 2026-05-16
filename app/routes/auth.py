@@ -11,29 +11,35 @@ HARDCODED_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin')
 
 @bp.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == 'POST':
-        identifier = request.form.get('email', '').strip().lower()
-        password = request.form.get('password', '')
-        is_hardcoded = identifier in (HARDCODED_USERNAME.lower(), HARDCODED_EMAIL.lower()
-                                      ) and password == HARDCODED_PASSWORD
-        if is_hardcoded:
-            admin = Admin.query.filter_by(email=HARDCODED_EMAIL).first()
-            if not admin:
-                admin = Admin(email=HARDCODED_EMAIL)
-                admin.set_password(HARDCODED_PASSWORD)
-                db.session.add(admin)
-                db.session.commit()
-            login_user(admin)
-            return redirect(url_for('certificates.dashboard'))
-        admin = Admin.query.filter(db.or_(
-            Admin.email == identifier,
-            Admin.email == (identifier.split('@')[0] if '@' not in identifier else identifier)
-        )).first()
-        if admin and admin.check_password(password):
-            login_user(admin)
-            return redirect(url_for('certificates.dashboard'))
-        flash('Invalid credentials')
-    return render_template('login.html')
+    import traceback
+    try:
+        if request.method == 'POST':
+            identifier = request.form.get('email', '').strip().lower()
+            password = request.form.get('password', '')
+            is_hardcoded = identifier in (HARDCODED_USERNAME.lower(), HARDCODED_EMAIL.lower()
+                                          ) and password == HARDCODED_PASSWORD
+            if is_hardcoded:
+                admin = Admin.query.filter_by(email=HARDCODED_EMAIL).first()
+                if not admin:
+                    admin = Admin(email=HARDCODED_EMAIL)
+                    admin.set_password(HARDCODED_PASSWORD)
+                    db.session.add(admin)
+                    db.session.commit()
+                login_user(admin)
+                return redirect(url_for('certificates.dashboard'))
+            admin = Admin.query.filter(db.or_(
+                Admin.email == identifier,
+                Admin.email == (identifier.split('@')[0] if '@' not in identifier else identifier)
+            )).first()
+            if admin and admin.check_password(password):
+                login_user(admin)
+                return redirect(url_for('certificates.dashboard'))
+            flash('Invalid credentials')
+        return render_template('login.html')
+    except Exception as e:
+        print("====== AUTH CRASH ======")
+        traceback.print_exc()
+        return jsonify({"error": "crash", "traceback": traceback.format_exc()}), 500
 
 
 @bp.route('/logout')
