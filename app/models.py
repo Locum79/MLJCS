@@ -4,6 +4,16 @@ from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
+class JobQueue(db.Model):
+    __tablename__ = "job_queue"
+    id = db.Column(db.Integer, primary_key=True)
+    task_name = db.Column(db.String(120), nullable=False)
+    payload = db.Column(db.JSON, nullable=True)
+    status = db.Column(db.String(20), default="pending")  # pending | running | done | failed
+    attempts = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Admin(UserMixin, db.Model):
     __tablename__ = 'admins'
     id = db.Column(db.Integer, primary_key=True)

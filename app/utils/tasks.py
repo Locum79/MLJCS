@@ -13,28 +13,28 @@ class TaskQueue:
 
     def init_app(self, app):
         app.task_queue = self
-        logger.info('TaskQueue initialized (Mode: Threading)')
+        logger.info('TaskQueue initialized (Mode: Database-Backed)')
 
     def enqueue(self, task_name: str, **kwargs):
+        # Validate the task exists before queuing
         try:
-            func = get_task(task_name)
+            get_task(task_name)
         except KeyError:
             raise RuntimeError(f"TASK NOT REGISTERED: {task_name}")
             
         kwargs.pop('job_timeout', None)
         
-        logger.info(f'Enqueuing task: {task_name} with args: {list(kwargs.keys())}')
+        logger.info(f'Enqueuing task to DB: {task_name} with args: {list(kwargs.keys())}')
 
-        def run_task(app_context, f, f_kwargs):
-            try:
-                with app_context:
-                    f(**f_kwargs)
-            except Exception as e:
-                logger.error(f'Task {task_name} failed: {e}', exc_info=True)
-                
-        thread = threading.Thread(target=run_task, args=(current_app.app_context(), func, kwargs), daemon=True)
-        thread.start()
-        return True
+        from app.models import db, JobQueue
+        job = JobQueue(
+            task_name=task_name,
+            payload=kwargs,
+            status="pending"
+        )
+        db.session.add(job)
+        db.session.commit()
+        return job.id
 
 
 task_queue = TaskQueue()
