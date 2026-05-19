@@ -212,7 +212,7 @@ def reanalyze_template(ct_id):
 def preview_certificate(ct_id):
     from flask import send_file
     from app.engine.pdf_processor import generate_personalized_pdf
-    from app.domain.certificates.service import resolve_certificate_asset
+    from app.domain.certificates.service import resolve_certificate_asset, ensure_svg_template
     ct = CertificateType.query.get_or_404(ct_id)
     data = request.json or {}
     full_name = data.get('full_name', 'Jane Smith')
@@ -221,7 +221,7 @@ def preview_certificate(ct_id):
     include_qr = data.get('include_qr', True)
     try:
         if ct.master_svg_path:
-            template_source = ct.master_svg_path
+            template_source = ensure_svg_template(ct) or resolve_certificate_asset(ct)
         else:
             template_source = resolve_certificate_asset(ct)
         pdf_bytes = generate_personalized_pdf(template_source, overlay_coords=ct.overlay_coords, full_name=full_name,

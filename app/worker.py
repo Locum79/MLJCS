@@ -16,7 +16,7 @@ def generate_certificate(job_id: int, certificate_id: str):
     from app import create_app
     from app.models import db, User, CertificateType, Certificate, JobQueue, CertificateStatus
     from app.engine.pdf_processor import generate_personalized_pdf
-    from app.domain.certificates.service import resolve_certificate_asset
+    from app.domain.certificates.service import resolve_certificate_asset, ensure_svg_template
     from datetime import datetime
 
     app = create_app()
@@ -51,7 +51,7 @@ def generate_certificate(job_id: int, certificate_id: str):
             verify_url = f'{base_url}/verify/{cert.id}' if base_url else ''
 
             if cert_type.master_svg_path:
-                template_source = cert_type.master_svg_path
+                template_source = ensure_svg_template(cert_type) or resolve_certificate_asset(cert_type)
             else:
                 template_source = resolve_certificate_asset(cert_type)
 
