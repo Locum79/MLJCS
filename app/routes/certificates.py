@@ -887,13 +887,22 @@ def view_certificate(cert_id):
     if not os.path.exists(archive_path):
         cert = Certificate.query.get(cert_id)
         if cert and cert.pdf_artifact:
+            current_app.logger.info(f"Serving {cert_id}.pdf directly from DB pdf_artifact via in-memory buffer")
+            import io
+            # Warm up cache in background/non-blocking fashion
             try:
                 os.makedirs(archive_dir, exist_ok=True)
                 with open(archive_path, 'wb') as f:
                     f.write(cert.pdf_artifact)
-                current_app.logger.info(f"Self-healed: restored {cert_id}.pdf from DB pdf_artifact to filesystem")
             except Exception as e:
-                current_app.logger.error(f"Failed to write self-healed PDF to disk: {e}")
+                current_app.logger.warning(f"Optional local caching of PDF to disk failed: {e}")
+            
+            return send_file(
+                io.BytesIO(cert.pdf_artifact),
+                mimetype='application/pdf',
+                as_attachment=False,
+                download_name=f'{cert_id}.pdf'
+            )
     
     if not os.path.exists(archive_path):
         return jsonify({
