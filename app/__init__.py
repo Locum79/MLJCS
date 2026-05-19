@@ -41,6 +41,17 @@ def create_app():
     app.register_blueprint(registration.bp)
     app.register_blueprint(certificates.bp)
     app.register_blueprint(email_routes.bp)
+
+    # Start the in-app background task processor thread to process queues
+    # on single-container/dyno environments without separate worker containers.
+    if os.environ.get('START_IN_APP_WORKER', 'True').lower() == 'true':
+        import sys
+        # Prevent starting worker threads during database migrations or CLI tools
+        is_cli = any(x in sys.argv[0] for x in ['flask', 'migrate', 'alembic', 'manage', 'db'])
+        if not is_cli:
+            from app.worker_loop import start_in_app_worker
+            start_in_app_worker(app)
+
     return app
 
 
