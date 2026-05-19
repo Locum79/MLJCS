@@ -679,11 +679,60 @@ def get_audit():
 
 
 @bp.route('/api/archive/view/<cert_id>')
-@login_required
-def view_archived_pdf(cert_id):
-    from flask import send_file
-    import io
-    record = CertArchive.query.filter_by(certificate_id=cert_id).first()
-    if not record or not record.pdf_binary:
-        return ('Certificate PDF not found in archive. It may still be processing or failed.', 404)
-    return send_file(io.BytesIO(record.pdf_binary), mimetype='application/pdf', as_attachment=False, download_name=f'{cert_id}.pdf')
+def view_certificate(cert_id):
+    """
+    Public/Admin certificate preview endpoint.
+    Shows the actual generated PDF in browser.
+    """
+    from flask import send_file, jsonify
+    user = User.query.filter_by(certificate_id=cert_id).first()
+    
+    if not user:
+        return jsonify({
+            'error': 'Certificate ID not found',
+            'certificate_id': cert_id,
+            'status': 'invalid'
+        }), 404
+    
+    archive_path = f"archive/{cert_id}.pdf"
+    
+    if not os.path.exists(archive_path):
+        return jsonify({
+            'error': 'Certificate PDF not generated yet',
+            'certificate_id': cert_id,
+            'recipient_name': f"{user.first_name} {user.surname}",
+            'status': user.status,
+            'generated': False,
+            'help': 'Certificate may still be processing or failed. Check worker logs.'
+        }), 404
+    
+    return send_file(
+        archive_path,
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f'{cert_id}.pdf'
+    )
+
+@bp.route('/api/archive/status/<certificate_id>')
+def archive_status(certificate_id):
+    """
+    Quick status check — does the PDF exist in archive?
+    """
+    from flask import jsonify
+    user = User.query.filter_by(certificate_id=certificate_id).first()
+    
+    if not user:
+        return jsonify({'error': 'Invalid certificate ID'}), 404
+    
+    archive_path = f"archive/{certificate_id}.pdf"
+    pdf_exists = os.path.exists(archive_path)
+    
+    return jsonify({
+        'certificate_id': certificate_id,
+        'recipient': f"{user.first_name} {user.surname}",
+        'email': user.email,
+        'status': user.status,
+        'pdf_generated': pdf_exists,
+        'pdf_size_bytes': os.path.getsize(archive_path) if pdf_exists else 0,
+        'verification_url': f"/api/archive/view/{certificate_id}"
+    })
