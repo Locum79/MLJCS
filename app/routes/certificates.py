@@ -401,11 +401,23 @@ def approve_users():
                 verify_url=verify_url
             )
 
-            # 3. Save to archive directory
-            os.makedirs('archive', exist_ok=True)
-            archive_path = f"archive/{user.certificate_id}.pdf"
+            if not pdf_bytes or len(pdf_bytes) == 0:
+                raise ValueError("Generated PDF bytes are empty or invalid")
+
+            current_app.logger.info(
+                f"PDF generated for {user.certificate_id} | size={len(pdf_bytes)} bytes"
+            )
+
+            # 3. Save to absolute archive directory
+            archive_dir = os.path.abspath('archive')
+            os.makedirs(archive_dir, exist_ok=True)
+            archive_path = os.path.join(archive_dir, f"{user.certificate_id}.pdf")
             with open(archive_path, 'wb') as f:
                 f.write(pdf_bytes)
+
+            current_app.logger.info(
+                f"Archive exists={os.path.exists(archive_path)} path={archive_path}"
+            )
 
             # 4. Ensure Certificate record is up to date
             import hashlib
@@ -456,16 +468,15 @@ def approve_users():
                 performed_by=current_user.email,
                 details={'error': str(e)}
             ))
-            # Still mark user approved even if PDF generation failed
-            user.status = 'approved'
-            user.approved_at = datetime.utcnow()
+            # Keep user status registered so they can be re-tried cleanly
+            user.status = 'registered'
             failed += 1
 
     db.session.commit()
 
     msg = f'{generated} approved with certificates generated'
     if failed:
-        msg += f', {failed} approved (PDF generation failed — will retry on Send)'
+        msg += f', {failed} failed (PDF generation failed — kept status as registered)'
 
     return jsonify({
         'message': msg,
@@ -858,6 +869,7 @@ def view_certificate(cert_id):
     Shows the actual generated PDF in browser.
     """
     from flask import send_file, jsonify
+    from app.models import Certificate
     user = User.query.filter_by(certificate_id=cert_id).first()
     
     if not user:
@@ -867,7 +879,21 @@ def view_certificate(cert_id):
             'status': 'invalid'
         }), 404
     
-    archive_path = f"archive/{cert_id}.pdf"
+    archive_dir = os.path.abspath('archive')
+    archive_path = os.path.join(archive_dir, f"{cert_id}.pdf")
+    current_app.logger.warning(f"Looking for certificate at {archive_path}")
+    
+    # Ephemeral filesystem recovery: if PDF doesn't exist on disk, check DB for pdf_artifact
+    if not os.path.exists(archive_path):
+        cert = Certificate.query.get(cert_id)
+        if cert and cert.pdf_artifact:
+            try:
+                os.makedirs(archive_dir, exist_ok=True)
+                with open(archive_path, 'wb') as f:
+                    f.write(cert.pdf_artifact)
+                current_app.logger.info(f"Self-healed: restored {cert_id}.pdf from DB pdf_artifact to filesystem")
+            except Exception as e:
+                current_app.logger.error(f"Failed to write self-healed PDF to disk: {e}")
     
     if not os.path.exists(archive_path):
         return jsonify({
@@ -880,7 +906,7 @@ def view_certificate(cert_id):
         }), 404
     
     return send_file(
-        os.path.abspath(archive_path),
+        archive_path,
         mimetype='application/pdf',
         as_attachment=False,
         download_name=f'{cert_id}.pdf'
@@ -892,12 +918,27 @@ def archive_status(certificate_id):
     Quick status check — does the PDF exist in archive?
     """
     from flask import jsonify
+    from app.models import Certificate
     user = User.query.filter_by(certificate_id=certificate_id).first()
     
     if not user:
         return jsonify({'error': 'Invalid certificate ID'}), 404
     
-    archive_path = f"archive/{certificate_id}.pdf"
+    archive_dir = os.path.abspath('archive')
+    archive_path = os.path.join(archive_dir, f"{certificate_id}.pdf")
+    
+    # Ephemeral filesystem recovery: if PDF doesn't exist on disk, check DB for pdf_artifact
+    if not os.path.exists(archive_path):
+        cert = Certificate.query.get(certificate_id)
+        if cert and cert.pdf_artifact:
+            try:
+                os.makedirs(archive_dir, exist_ok=True)
+                with open(archive_path, 'wb') as f:
+                    f.write(cert.pdf_artifact)
+                current_app.logger.info(f"Self-healed (status): restored {certificate_id}.pdf from DB to filesystem")
+            except Exception as e:
+                current_app.logger.error(f"Failed to write self-healed PDF to disk: {e}")
+
     pdf_exists = os.path.exists(archive_path)
     
     return jsonify({
