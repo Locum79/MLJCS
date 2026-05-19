@@ -330,13 +330,149 @@ def toggle_qr():
 @bp.route('/api/approve', methods=['POST'])
 @login_required
 def approve_users():
-    user_ids = request.json['user_ids']
-    User.query.filter(User.id.in_(user_ids)).update(
-        {'status': 'approved', 'approved_at': datetime.utcnow()}, synchronize_session=False)
-    for uid in user_ids:
-        db.session.add(AuditLog(user_id=uid, action='approved', performed_by=current_user.email))
+    """Approve users AND generate certificates immediately. PDF saved to archive."""
+    data = request.json or {}
+    user_ids = data.get('user_ids', [])
+    cert_type_id = data.get('cert_type_id')
+
+    if not user_ids:
+        return jsonify({'error': 'No users selected'}), 400
+
+    users = User.query.filter(
+        User.id.in_(user_ids),
+        User.status.in_(['registered', 'rejected'])
+    ).all()
+
+    if not users:
+        return jsonify({'error': 'No eligible users found in selection'}), 400
+
+    # Determine cert_type: from payload, or from the first user's cert type
+    cert_type = None
+    if cert_type_id:
+        cert_type = CertificateType.query.get(cert_type_id)
+    if not cert_type and users:
+        cert_type = users[0].certificate_type
+    if not cert_type:
+        return jsonify({'error': 'Certificate type not found'}), 404
+
+    from app.engine.pdf_processor import generate_personalized_pdf
+    from app.domain.certificates.service import resolve_certificate_asset, ensure_svg_template
+    from app.engine.cert_id import assign_certificate_id
+    from app.models import Certificate, CertificateStatus, OrgSettings
+
+    org = OrgSettings.query.first() or OrgSettings()
+    base_url = (org.verify_base_url or '').rstrip('/')
+
+    # Resolve the template source once for all users
+    if cert_type.master_svg_path:
+        template_source = ensure_svg_template(cert_type) or resolve_certificate_asset(cert_type)
+    else:
+        template_source = resolve_certificate_asset(cert_type)
+
+    generated = 0
+    failed = 0
+    preview_urls = []
+
+    for user in users:
+        try:
+            # 1. Assign certificate ID if not yet assigned
+            if not user.certificate_id:
+                assign_certificate_id(user)
+                db.session.flush()
+
+            full_name = f"{user.first_name} {user.surname}"
+            if user.other_name and user.other_name.strip():
+                full_name = f"{full_name} {user.other_name}"
+            full_name = full_name.strip()
+
+            issue_date = datetime.utcnow().strftime('%d %B %Y')
+            verify_url = f"{base_url}/verify/{user.certificate_id}" if base_url else ''
+
+            # 2. Generate the PDF
+            pdf_bytes = generate_personalized_pdf(
+                template_source,
+                overlay_coords=cert_type.overlay_coords,
+                full_name=full_name,
+                certificate_id=user.certificate_id,
+                issuance_date=issue_date,
+                include_qr=user.include_qr,
+                cert_name=cert_type.name,
+                master_file_type=cert_type.master_file_type or 'pdf',
+                verify_url=verify_url
+            )
+
+            # 3. Save to archive directory
+            os.makedirs('archive', exist_ok=True)
+            archive_path = f"archive/{user.certificate_id}.pdf"
+            with open(archive_path, 'wb') as f:
+                f.write(pdf_bytes)
+
+            # 4. Ensure Certificate record is up to date
+            import hashlib
+            pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+            cert = Certificate.query.get(user.certificate_id)
+            if not cert:
+                cert = Certificate(
+                    id=user.certificate_id,
+                    user_id=user.id,
+                    cert_type_id=cert_type.id,
+                    asset_id=cert_type.asset_id,
+                    status=CertificateStatus.DRAFT
+                )
+                db.session.add(cert)
+                db.session.flush()
+
+            # Transition through states to READY_FOR_DISPATCH
+            if cert.status == CertificateStatus.DRAFT:
+                cert.transition_to_approved()
+            if cert.status == CertificateStatus.APPROVED_FOR_GENERATION:
+                cert.transition_to_generating()
+            cert.transition_to_generated(pdf_bytes, pdf_hash)
+            cert.transition_to_ready()
+
+            # 5. Approve the user
+            user.status = 'approved'
+            user.approved_at = datetime.utcnow()
+
+            db.session.add(AuditLog(
+                user_id=user.id,
+                action='approved',
+                performed_by=current_user.email,
+                details={
+                    'certificate_generated': True,
+                    'archive_path': archive_path,
+                    'file_size_bytes': len(pdf_bytes)
+                }
+            ))
+
+            preview_urls.append(f"/api/archive/view/{user.certificate_id}")
+            generated += 1
+
+        except Exception as e:
+            current_app.logger.error(f"Failed to approve/generate for user {user.id}: {e}", exc_info=True)
+            db.session.add(AuditLog(
+                user_id=user.id,
+                action='approve_failed',
+                performed_by=current_user.email,
+                details={'error': str(e)}
+            ))
+            # Still mark user approved even if PDF generation failed
+            user.status = 'approved'
+            user.approved_at = datetime.utcnow()
+            failed += 1
+
     db.session.commit()
-    return jsonify({'message': f'{len(user_ids)} approved'})
+
+    msg = f'{generated} approved with certificates generated'
+    if failed:
+        msg += f', {failed} approved (PDF generation failed — will retry on Send)'
+
+    return jsonify({
+        'message': msg,
+        'generated': generated,
+        'failed': failed,
+        'preview_urls': preview_urls[:5]
+    })
 
 
 @bp.route('/api/reject', methods=['POST'])
@@ -736,3 +872,72 @@ def archive_status(certificate_id):
         'pdf_size_bytes': os.path.getsize(archive_path) if pdf_exists else 0,
         'verification_url': f"/api/archive/view/{certificate_id}"
     })
+
+
+@bp.route('/api/archive/purge', methods=['POST'])
+@login_required
+def purge_archive():
+    """Delete certificate PDFs from archive. Frees storage while keeping DB records."""
+    data = request.json or {}
+    cert_type_id = data.get('cert_type_id')
+    purge_all = data.get('purge_all', False)
+
+    if purge_all:
+        cert_types = CertificateType.query.all()
+    elif cert_type_id:
+        ct = CertificateType.query.get(cert_type_id)
+        if not ct:
+            return jsonify({'error': 'Certificate type not found'}), 404
+        cert_types = [ct]
+    else:
+        return jsonify({'error': 'Specify cert_type_id or purge_all=true'}), 400
+
+    purged_count = 0
+    freed_bytes = 0
+
+    for ct in cert_types:
+        users = User.query.filter_by(certificate_type_id=ct.id).all()
+        for user in users:
+            if user.certificate_id:
+                archive_path = f"archive/{user.certificate_id}.pdf"
+                if os.path.exists(archive_path):
+                    freed_bytes += os.path.getsize(archive_path)
+                    os.remove(archive_path)
+                    purged_count += 1
+
+    db.session.add(AuditLog(
+        action='archive_purged',
+        performed_by=current_user.email,
+        details={'purged': purged_count, 'freed_bytes': freed_bytes}
+    ))
+    db.session.commit()
+
+    return jsonify({
+        'message': f'Purged {purged_count} certificate PDFs',
+        'freed_mb': round(freed_bytes / (1024 * 1024), 2),
+        'freed_bytes': freed_bytes
+    })
+
+
+@bp.route('/api/archive/stats')
+@login_required
+def archive_stats():
+    """Return archive storage usage stats."""
+    archive_dir = 'archive'
+    if not os.path.exists(archive_dir):
+        return jsonify({'total_files': 0, 'total_size_mb': 0, 'total_size_bytes': 0})
+
+    total_size = 0
+    file_count = 0
+    for filename in os.listdir(archive_dir):
+        if filename.endswith('.pdf'):
+            fp = os.path.join(archive_dir, filename)
+            total_size += os.path.getsize(fp)
+            file_count += 1
+
+    return jsonify({
+        'total_files': file_count,
+        'total_size_mb': round(total_size / (1024 * 1024), 2),
+        'total_size_bytes': total_size
+    })
+
