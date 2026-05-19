@@ -12,7 +12,7 @@ def _get_org_settings(app_context):
     return settings
 
 
-def generate_certificate(job_id: int, certificate_id: str):
+def generate_certificate(job_id: int, certificate_id: str, draft_id: int = None, **kwargs):
     from app import create_app
     from app.models import db, User, CertificateType, Certificate, JobQueue, CertificateStatus
     from app.engine.pdf_processor import generate_personalized_pdf
@@ -279,14 +279,22 @@ def process_bulk_certificates(job_id: int, user_ids: list, certificate_type_id: 
 
             cert = db.session.get(Certificate, user.certificate_id)
             if not cert:
-                cert = Certificate(
-                    id=user.certificate_id,
-                    user_id=user.id,
-                    cert_type_id=cert_type.id,
-                    asset_id=cert_type.asset_id,
-                    status=CertificateStatus.DRAFT
-                )
-                db.session.add(cert)
+                try:
+                    with db.session.begin_nested():
+                        cert = Certificate(
+                            id=user.certificate_id,
+                            user_id=user.id,
+                            cert_type_id=cert_type.id,
+                            asset_id=cert_type.asset_id,
+                            status=CertificateStatus.DRAFT
+                        )
+                        db.session.add(cert)
+                except Exception:
+                    # Roll back savepoint and fetch the record created concurrently by another worker
+                    db.session.rollback()
+                    cert = db.session.get(Certificate, user.certificate_id)
+                    if not cert:
+                        raise
                 db.session.commit()
 
             # 2. Transition to APPROVED_FOR_GENERATION
