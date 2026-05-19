@@ -70,6 +70,14 @@ def generate_certificate(job_id: int, certificate_id: str):
             import hashlib
             pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
             cert.transition_to_generated(pdf_bytes, pdf_hash)
+            
+            import os
+            os.makedirs('archive', exist_ok=True)
+            archive_path = f"archive/{cert.id}.pdf"
+            with open(archive_path, 'wb') as f:
+                f.write(pdf_bytes)
+            logger.info(f"Certificate saved to archive: {archive_path}")
+
             cert.transition_to_ready()
             cert.transition_to_queued()
             db.session.commit()
