@@ -31,3 +31,27 @@ table.dataTable { width: 100% !important; font-size: 13px; }
     font-size: 11px;
     text-decoration: none;
 }
+
+.btn-purge {
+    padding: 10px 20px;
+    background: #795548;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+}
+.btn-purge:hover { background: #5d4037; }
+
+.btn-stats {
+    padding: 10px 20px;
+    background: #009688;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 13px;
+}
+.btn-stats:hover { background: #00796b; }
