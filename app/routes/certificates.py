@@ -621,16 +621,49 @@ def nudge_user():
 @bp.route('/api/delete', methods=['POST'])
 @login_required
 def delete_users():
+    from app.models import Certificate, JobQueue
     user_ids = request.json['user_ids']
     users = User.query.filter(User.id.in_(user_ids)).all()
+
     for u in users:
-        if u.certificate_id and (not CertArchive.query.filter_by(certificate_id=u.certificate_id).first()):
-            db.session.add(CertArchive(certificate_id=u.certificate_id, full_name=u.full_name, cert_name=u.certificate_type.name if u.certificate_type else '', course_code=u.certificate_type.course_code if u.certificate_type else '',
-                           issued_date=u.sent_at.strftime('%d %B %Y') if u.sent_at else '', email=u.email, status='archived', raw_binary=json.dumps({'email': u.email}).encode('utf-8')))
+        # 1. Preserve certificate ID in CertArchive ledger before deletion
+        if u.certificate_id and not CertArchive.query.filter_by(certificate_id=u.certificate_id).first():
+            db.session.add(CertArchive(
+                certificate_id=u.certificate_id,
+                full_name=u.full_name,
+                cert_name=u.certificate_type.name if u.certificate_type else '',
+                course_code=u.certificate_type.course_code if u.certificate_type else '',
+                issued_date=u.sent_at.strftime('%d %B %Y') if u.sent_at else '',
+                email=u.email,
+                status='archived',
+                raw_binary=json.dumps({'email': u.email}).encode('utf-8')
+            ))
+
+        # 2. Remove archived PDF from disk
+        if u.certificate_id:
+            archive_path = f"archive/{u.certificate_id}.pdf"
+            if os.path.exists(archive_path):
+                try:
+                    os.remove(archive_path)
+                except OSError:
+                    pass
+
+        # 3. Delete Certificate record (FK: certificates.user_id → users.id)
+        if u.certificate_id:
+            cert = Certificate.query.get(u.certificate_id)
+            if cert:
+                db.session.delete(cert)
+
+        # 4. Nullify / delete orphaned AuditLog rows for this user
+        AuditLog.query.filter_by(user_id=u.id).update({'user_id': None}, synchronize_session=False)
+
+    db.session.flush()  # Flush FK-dependent deletes before bulk user delete
+
+    # 5. Now safe to delete the user rows
     User.query.filter(User.id.in_(user_ids)).delete(synchronize_session=False)
     db.session.add(AuditLog(action='deleted', performed_by=current_user.email, details={'count': len(user_ids)}))
     db.session.commit()
-    return jsonify({'message': f'{len(user_ids)} participants deleted'})
+    return jsonify({'message': f'{len(user_ids)} participant(s) deleted'})
 
 
 @bp.route('/api/users/archive', methods=['POST'])
