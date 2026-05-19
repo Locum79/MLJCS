@@ -97,36 +97,98 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
         body_font = _DEFAULT_FONT_REGULAR
     packet = io.BytesIO()
     c = canvas.Canvas(packet, pagesize=(page_w, page_h))
+    
+    from reportlab.lib import colors
+    
+    # 1. Resolve custom colors from overlay_coords
+    mask_color_hex = overlay_coords.get('mask_color', '#FFFFFF')
+    name_color_hex = overlay_coords.get('name_color', '#000000')
+    text_color_hex = overlay_coords.get('text_color', '#000000')
+    
+    try:
+        mask_color = colors.HexColor(mask_color_hex)
+    except Exception:
+        mask_color = colors.white
+        
+    try:
+        name_color = colors.HexColor(name_color_hex)
+    except Exception:
+        name_color = colors.black
+        
+    try:
+        text_color = colors.HexColor(text_color_hex)
+    except Exception:
+        text_color = colors.black
+
+    # Resolve coordinates
     name_x = overlay_coords.get('name_x', page_w / 2)
     name_y = overlay_coords.get('name_y', page_h * 0.46)
     name_w = overlay_coords.get('name_w', page_w * 0.7)
     name_h = overlay_coords.get('name_h', 50)
     name_align = overlay_coords.get('name_align', 'center')
+    
+    cid_x = overlay_coords.get('cert_id_x', 60)
+    cid_y = overlay_coords.get('cert_id_y', 55)
+    cid_w = overlay_coords.get('cert_id_w', 120)
+    cid_h = overlay_coords.get('cert_id_h', 15)
+    
+    date_x = overlay_coords.get('date_x', 60)
+    date_y = overlay_coords.get('date_y', 42)
+    date_w = overlay_coords.get('date_w', 120)
+    date_h = overlay_coords.get('date_h', 15)
+
+    # 2. Mask the original placeholder text areas to avoid overlaps
+    c.setFillColor(mask_color)
+    c.setStrokeColor(mask_color)
+    
+    # Mask Name
+    if name_align == 'center':
+        name_rect_x = name_x - name_w / 2
+    elif name_align == 'right':
+        name_rect_x = name_x - name_w
+    else:
+        name_rect_x = name_x
+    c.rect(name_rect_x, name_y - name_h / 2, name_w, name_h, fill=1, stroke=0)
+    
+    # Mask Cert ID
+    c.rect(cid_x, cid_y - cid_h / 2, cid_w, cid_h, fill=1, stroke=0)
+    
+    # Mask Date
+    c.rect(date_x, date_y - date_h / 2, date_w, date_h, fill=1, stroke=0)
+
+    # 3. Draw new personalized text in custom text colors
     start_size = overlay_coords.get('name_font_size', 32)
     font_size = _auto_font_size(full_name, name_w, name_h, name_font, start_size)
+    
     c.setFont(name_font, font_size)
+    c.setFillColor(name_color)
     if name_align == 'center':
         c.drawCentredString(name_x, name_y, full_name)
     elif name_align == 'right':
         c.drawRightString(name_x, name_y, full_name)
     else:
         c.drawString(name_x, name_y, full_name)
-    cid_x = overlay_coords.get('cert_id_x', 60)
-    cid_y = overlay_coords.get('cert_id_y', 55)
+        
+    c.setFillColor(text_color)
     cid_size = overlay_coords.get('cert_id_font_size', 9)
     c.setFont(body_font, cid_size)
     c.drawString(cid_x, cid_y, certificate_id)
-    date_x = overlay_coords.get('date_x', 60)
-    date_y = overlay_coords.get('date_y', 42)
+    
     date_size = overlay_coords.get('date_font_size', 9)
     c.setFont(body_font, date_size)
     c.drawString(date_x, date_y, issuance_date)
+    
+    # 4. Draw QR Code (with optional background masking)
     qr_x = overlay_coords.get('qr_x')
     qr_y = overlay_coords.get('qr_y', 20)
     qr_size = overlay_coords.get('qr_size', 72)
     if qr_x is None:
         qr_x = page_w - qr_size - 20
     if include_qr and isinstance(qr_x, (int, float)) and (qr_x >= 0):
+        # Mask QR region first
+        c.setFillColor(mask_color)
+        c.rect(qr_x, qr_y, qr_size, qr_size, fill=1, stroke=0)
+        
         qr_url = verify_url or f'CERT:{certificate_id}'
         qr_data = f'{qr_url}|{full_name}|{cert_name}|PASSED|{issuance_date}'
         qr_buf = _make_qr(qr_data)
