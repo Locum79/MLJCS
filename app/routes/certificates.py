@@ -880,7 +880,7 @@ def view_certificate(cert_id):
         }), 404
     
     return send_file(
-        archive_path,
+        os.path.abspath(archive_path),
         mimetype='application/pdf',
         as_attachment=False,
         download_name=f'{cert_id}.pdf'
