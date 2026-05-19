@@ -104,6 +104,28 @@ def create_cert_type():
         'regions'), registration_token=token, email_message=request.form.get('email_message', '').strip() or None, email_subject=request.form.get('email_subject', '').strip() or None, seq_counter=0)
     db.session.add(ct)
     db.session.commit()
+
+    # Automatically convert newly uploaded PDF template to SVG if possible
+    if ext == 'pdf':
+        try:
+            os.makedirs("uploads", exist_ok=True)
+            pdf_path = f"uploads/{ct.id}_master.pdf"
+            with open(pdf_path, 'wb') as f:
+                f.write(master_binary)
+            
+            from app.engine.template_converter import pdf_to_svg, add_placeholders_to_svg
+            svg_path = f"uploads/{ct.id}_master.svg"
+            pdf_to_svg(pdf_path, svg_path)
+            add_placeholders_to_svg(svg_path, ct.overlay_coords)
+            
+            ct.master_svg_path = svg_path
+            db.session.commit()
+            if os.path.exists(pdf_path):
+                os.remove(pdf_path)
+        except Exception as e:
+            # Safe silent fallback for robust operation
+            pass
+
     return jsonify({'id': ct.id, 'name': ct.name, 'registration_token': token, 'register_url': f'/register/{token}', 'ocr_message': ocr_result.get('message'), 'ocr_regions': ocr_result.get('regions')})
 
 
@@ -135,6 +157,49 @@ def delete_cert_type(ct_id):
     return jsonify({'message': 'Removed from library'})
 
 
+@bp.route('/admin/upload-template', methods=['POST'])
+@login_required
+def upload_template():
+    """Admin uploads PDF master → system converts to SVG template"""
+    if 'master_pdf' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+    file = request.files['master_pdf']
+    cert_type_id = request.form.get('cert_type_id')
+    if not cert_type_id:
+        return jsonify({'error': 'cert_type_id required'}), 400
+    
+    cert_type = CertificateType.query.get(cert_type_id)
+    if not cert_type:
+        return jsonify({'error': 'CertificateType not found'}), 404
+    
+    # Ensure upload folder exists
+    os.makedirs("uploads", exist_ok=True)
+    
+    # Save uploaded PDF temporarily
+    pdf_path = f"uploads/{cert_type_id}_master.pdf"
+    file.save(pdf_path)
+    
+    # Convert to SVG
+    from app.engine.template_converter import pdf_to_svg, add_placeholders_to_svg
+    
+    svg_path = f"uploads/{cert_type_id}_master.svg"
+    try:
+        pdf_to_svg(pdf_path, svg_path)
+        
+        # Add placeholders based on overlay_coords
+        add_placeholders_to_svg(svg_path, cert_type.overlay_coords)
+        
+        # Update certificate type to use SVG
+        cert_type.master_svg_path = svg_path
+        db.session.commit()
+    finally:
+        # Clean up PDF if it was saved
+        if os.path.exists(pdf_path):
+            os.remove(pdf_path)
+    
+    return jsonify({'message': 'Template converted to SVG', 'svg_path': svg_path})
+
+
 @bp.route('/api/cert-types/<int:ct_id>/analyze', methods=['POST'])
 @login_required
 def reanalyze_template(ct_id):
@@ -155,8 +220,11 @@ def preview_certificate(ct_id):
     issue_date = data.get('issue_date', datetime.utcnow().strftime('%d %B %Y'))
     include_qr = data.get('include_qr', True)
     try:
-        template_binary = resolve_certificate_asset(ct)
-        pdf_bytes = generate_personalized_pdf(template_binary=template_binary, overlay_coords=ct.overlay_coords, full_name=full_name,
+        if ct.master_svg_path:
+            template_source = ct.master_svg_path
+        else:
+            template_source = resolve_certificate_asset(ct)
+        pdf_bytes = generate_personalized_pdf(template_source, overlay_coords=ct.overlay_coords, full_name=full_name,
                                               certificate_id=cert_id, issuance_date=issue_date, include_qr=include_qr, cert_name=ct.name, master_file_type=ct.master_file_type or 'pdf')
     except RuntimeError as e:
         return (jsonify({'error': str(e)}), 404)

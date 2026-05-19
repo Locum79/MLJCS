@@ -1,14 +1,25 @@
+"""
+Generates personalized PDF certificates from SVG template.
+Replaces PyPDF2 overlay approach with SVG → PDF rendering.
+Provides a robust fallback to legacy PyPDF2 canvas overlay for compatibility.
+"""
+
+from cairosvg import svg2pdf
+import qrcode
+import io
+import base64
+import re
+import os
+import logging
+from PIL import Image
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from PIL import Image
-import qrcode
-import io
-import os
-import logging
+
 logger = logging.getLogger(__name__)
+
 _FONT_DIR = os.path.join(os.path.dirname(__file__), '../../static/fonts')
 _DEFAULT_FONT = 'Helvetica-Bold'
 _DEFAULT_FONT_REGULAR = 'Helvetica'
@@ -67,7 +78,7 @@ def _binary_to_reader(binary_data: bytes, file_type: str) -> PdfReader:
         return PdfReader(io.BytesIO(binary_data))
 
 
-def generate_personalized_pdf(template_binary: bytes, overlay_coords: dict, full_name: str, certificate_id: str, issuance_date: str, include_qr: bool = True, cert_name: str = '', master_file_type: str = 'pdf', verify_url: str = '', font_name: str = None) -> bytes:
+def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dict, full_name: str, certificate_id: str, issuance_date: str, include_qr: bool = True, cert_name: str = '', master_file_type: str = 'pdf', verify_url: str = '', font_name: str = None) -> bytes:
     if not template_binary:
         raise ValueError("template_binary is required")
 
@@ -128,3 +139,57 @@ def generate_personalized_pdf(template_binary: bytes, overlay_coords: dict, full
     out = io.BytesIO()
     writer.write(out)
     return out.getvalue()
+
+
+def generate_personalized_pdf(svg_template_path, overlay_coords, 
+                               full_name, certificate_id, issuance_date, **kwargs):
+    """
+    1. Load SVG template
+    2. Replace placeholder text with actual values
+    3. Generate QR code and embed as base64 image in SVG
+    4. Convert SVG to final PDF
+    """
+    # Robust backward compatibility check: if binary template is passed, fall back to legacy PyPDF2 overlay
+    if isinstance(svg_template_path, bytes):
+        return generate_personalized_pdf_legacy(
+            template_binary=svg_template_path,
+            overlay_coords=overlay_coords,
+            full_name=full_name,
+            certificate_id=certificate_id,
+            issuance_date=issuance_date,
+            **kwargs
+        )
+
+    # Read SVG template
+    with open(svg_template_path, 'r', encoding='utf-8') as f:
+        svg_content = f.read()
+    
+    # Generate QR code
+    qr_data = f"CERT:{certificate_id}|NAME:{full_name}|DATE:{issuance_date}"
+    qr = qrcode.make(qr_data)
+    qr_buffer = io.BytesIO()
+    qr.save(qr_buffer, format='PNG')
+    qr_buffer.seek(0)
+    qr_base64 = base64.b64encode(qr_buffer.read()).decode('utf-8')
+    
+    # Replace QR placeholder
+    qr_data_uri = f'data:image/png;base64,{qr_base64}'
+    svg_content = svg_content.replace(
+        'id="placeholder-qr"',
+        f'id="placeholder-qr" href="{qr_data_uri}"'
+    )
+    
+    # Replace text placeholders
+    replacements = {
+        '{{name}}': full_name,
+        '{{cert_id}}': certificate_id,
+        '{{date}}': issuance_date,
+    }
+    
+    for placeholder, value in replacements.items():
+        svg_content = svg_content.replace(placeholder, value)
+    
+    # Convert SVG to PDF bytes
+    pdf_bytes = svg2pdf(bytestring=svg_content.encode('utf-8'))
+    
+    return pdf_bytes

@@ -89,6 +89,7 @@ class CertificateType(db.Model):
     asset_id = db.Column(db.String(36), db.ForeignKey('certificate_assets.id'), nullable=True)
     master_pdf_path = db.Column(db.String(500), nullable=True)
     master_pdf_binary = db.Column(db.LargeBinary, nullable=True)
+    master_svg_path = db.Column(db.String(500), nullable=True)  # New: SVG template path
     master_file_type = db.Column(db.String(10), default='pdf')
     overlay_coords = db.Column(db.JSON, nullable=False)
     ocr_regions = db.Column(db.JSON, nullable=True)

@@ -50,9 +50,13 @@ def generate_certificate(job_id: int, certificate_id: str):
             base_url = org.verify_base_url or ''
             verify_url = f'{base_url}/verify/{cert.id}' if base_url else ''
 
-            template_binary = resolve_certificate_asset(cert_type)
+            if cert_type.master_svg_path:
+                template_source = cert_type.master_svg_path
+            else:
+                template_source = resolve_certificate_asset(cert_type)
+
             pdf_bytes = generate_personalized_pdf(
-                template_binary=template_binary, 
+                template_source, 
                 overlay_coords=cert_type.overlay_coords, 
                 full_name=user.full_name, 
                 certificate_id=cert.id,
