@@ -4,7 +4,6 @@ Replaces PyPDF2 overlay approach with SVG → PDF rendering.
 Provides a robust fallback to legacy PyPDF2 canvas overlay for compatibility.
 """
 
-from cairosvg import svg2pdf
 import qrcode
 import io
 import base64
@@ -66,8 +65,17 @@ def _binary_to_reader(binary_data: bytes, file_type: str) -> PdfReader:
     if file_type == 'png':
         img = Image.open(io.BytesIO(binary_data))
         iw, ih = img.size
-        scale = min(841.89 / ih, 595.28 / iw)
+        # Dynamically scale to standard A4 paper size bounds based on orientation
+        if iw >= ih:
+            # Landscape template
+            max_w, max_h = 841.89, 595.28
+        else:
+            # Portrait template
+            max_w, max_h = 595.28, 841.89
+            
+        scale = min(max_w / iw, max_h / ih)
         pw, ph = (iw * scale, ih * scale)
+        
         buf = io.BytesIO()
         c = canvas.Canvas(buf, pagesize=(pw, ph))
         c.drawImage(ImageReader(img), 0, 0, width=pw, height=ph, preserveAspectRatio=True)
@@ -271,6 +279,7 @@ def generate_personalized_pdf(svg_template_path, overlay_coords,
         svg_content = svg_content.replace(placeholder, value)
     
     # Convert SVG to PDF bytes
+    from cairosvg import svg2pdf
     pdf_bytes = svg2pdf(bytestring=svg_content.encode('utf-8'))
     
     return pdf_bytes
