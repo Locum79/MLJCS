@@ -109,12 +109,16 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
     from reportlab.lib import colors
     
     # 1. Resolve custom colors from overlay_coords
-    mask_color_hex = overlay_coords.get('mask_color', '#FFFFFF')
+    default_mask = 'transparent' if master_file_type == 'png' else '#FFFFFF'
+    mask_color_hex = overlay_coords.get('mask_color', default_mask)
     name_color_hex = overlay_coords.get('name_color', '#000000')
     text_color_hex = overlay_coords.get('text_color', '#000000')
     
     try:
-        mask_color = colors.HexColor(mask_color_hex)
+        if str(mask_color_hex).lower() in ('transparent', 'none', ''):
+            mask_color = None
+        else:
+            mask_color = colors.HexColor(mask_color_hex)
     except Exception:
         mask_color = colors.white
         
@@ -145,10 +149,7 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
     date_w = overlay_coords.get('date_w', 120)
     date_h = overlay_coords.get('date_h', 15)
 
-    # 2. Mask the original placeholder text areas to avoid overlaps
-    c.setFillColor(mask_color)
-    c.setStrokeColor(mask_color)
-    
+    # 2. Mask the original placeholder text areas to avoid overlaps (only if mask_color is specified)
     pad_name_x = overlay_coords.get('name_bg_padding_x', 15)
     pad_name_y = overlay_coords.get('name_bg_padding_y', 8)
     
@@ -158,20 +159,24 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
     pad_date_x = overlay_coords.get('date_bg_padding_x', 10)
     pad_date_y = overlay_coords.get('date_bg_padding_y', 4)
     
-    # Mask Name
-    if name_align == 'center':
-        name_rect_x = name_x - name_w / 2
-    elif name_align == 'right':
-        name_rect_x = name_x - name_w
-    else:
-        name_rect_x = name_x
-    c.rect(name_rect_x - pad_name_x, name_y - name_h / 2 - pad_name_y, name_w + 2 * pad_name_x, name_h + 2 * pad_name_y, fill=1, stroke=0)
-    
-    # Mask Cert ID
-    c.rect(cid_x - pad_id_x, cid_y - cid_h / 2 - pad_id_y, cid_w + 2 * pad_id_x, cid_h + 2 * pad_id_y, fill=1, stroke=0)
-    
-    # Mask Date
-    c.rect(date_x - pad_date_x, date_y - date_h / 2 - pad_date_y, date_w + 2 * pad_date_x, date_h + 2 * pad_date_y, fill=1, stroke=0)
+    if mask_color is not None:
+        c.setFillColor(mask_color)
+        c.setStrokeColor(mask_color)
+        
+        # Mask Name
+        if name_align == 'center':
+            name_rect_x = name_x - name_w / 2
+        elif name_align == 'right':
+            name_rect_x = name_x - name_w
+        else:
+            name_rect_x = name_x
+        c.rect(name_rect_x - pad_name_x, name_y - name_h / 2 - pad_name_y, name_w + 2 * pad_name_x, name_h + 2 * pad_name_y, fill=1, stroke=0)
+        
+        # Mask Cert ID
+        c.rect(cid_x - pad_id_x, cid_y - cid_h / 2 - pad_id_y, cid_w + 2 * pad_id_x, cid_h + 2 * pad_id_y, fill=1, stroke=0)
+        
+        # Mask Date
+        c.rect(date_x - pad_date_x, date_y - date_h / 2 - pad_date_y, date_w + 2 * pad_date_x, date_h + 2 * pad_date_y, fill=1, stroke=0)
 
     # 3. Draw new personalized text in custom text colors
     start_size = overlay_coords.get('name_font_size', 32)
@@ -203,8 +208,9 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
         qr_x = page_w - qr_size - 20
     if include_qr and isinstance(qr_x, (int, float)) and (qr_x >= 0):
         # Mask QR region first
-        c.setFillColor(mask_color)
-        c.rect(qr_x, qr_y, qr_size, qr_size, fill=1, stroke=0)
+        if mask_color is not None:
+            c.setFillColor(mask_color)
+            c.rect(qr_x, qr_y, qr_size, qr_size, fill=1, stroke=0)
         
         qr_url = verify_url or f'CERT:{certificate_id}'
         qr_data = f'{qr_url}|{full_name}|{cert_name}|PASSED|{issuance_date}'
