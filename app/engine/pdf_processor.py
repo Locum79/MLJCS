@@ -239,8 +239,9 @@ def generate_personalized_pdf(svg_template_path, overlay_coords,
     qr_data = f"CERT:{certificate_id}|NAME:{full_name}|DATE:{issuance_date}"
     qr = qrcode.make(qr_data)
     qr_buffer = io.BytesIO()
+    save_kwargs = {'format': 'PNG'}
     try:
-        qr.save(qr_buffer, format='PNG')
+        qr.save(qr_buffer, **save_kwargs)
     except TypeError:
         qr.save(qr_buffer)
     qr_buffer.seek(0)
