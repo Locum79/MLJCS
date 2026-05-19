@@ -141,6 +141,15 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
     c.setFillColor(mask_color)
     c.setStrokeColor(mask_color)
     
+    pad_name_x = overlay_coords.get('name_bg_padding_x', 15)
+    pad_name_y = overlay_coords.get('name_bg_padding_y', 8)
+    
+    pad_id_x = overlay_coords.get('cert_id_bg_padding_x', 10)
+    pad_id_y = overlay_coords.get('cert_id_bg_padding_y', 4)
+    
+    pad_date_x = overlay_coords.get('date_bg_padding_x', 10)
+    pad_date_y = overlay_coords.get('date_bg_padding_y', 4)
+    
     # Mask Name
     if name_align == 'center':
         name_rect_x = name_x - name_w / 2
@@ -148,13 +157,13 @@ def generate_personalized_pdf_legacy(template_binary: bytes, overlay_coords: dic
         name_rect_x = name_x - name_w
     else:
         name_rect_x = name_x
-    c.rect(name_rect_x, name_y - name_h / 2, name_w, name_h, fill=1, stroke=0)
+    c.rect(name_rect_x - pad_name_x, name_y - name_h / 2 - pad_name_y, name_w + 2 * pad_name_x, name_h + 2 * pad_name_y, fill=1, stroke=0)
     
     # Mask Cert ID
-    c.rect(cid_x, cid_y - cid_h / 2, cid_w, cid_h, fill=1, stroke=0)
+    c.rect(cid_x - pad_id_x, cid_y - cid_h / 2 - pad_id_y, cid_w + 2 * pad_id_x, cid_h + 2 * pad_id_y, fill=1, stroke=0)
     
     # Mask Date
-    c.rect(date_x, date_y - date_h / 2, date_w, date_h, fill=1, stroke=0)
+    c.rect(date_x - pad_date_x, date_y - date_h / 2 - pad_date_y, date_w + 2 * pad_date_x, date_h + 2 * pad_date_y, fill=1, stroke=0)
 
     # 3. Draw new personalized text in custom text colors
     start_size = overlay_coords.get('name_font_size', 32)
