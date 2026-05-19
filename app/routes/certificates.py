@@ -621,7 +621,7 @@ def nudge_user():
 @bp.route('/api/delete', methods=['POST'])
 @login_required
 def delete_users():
-    from app.models import Certificate, JobQueue
+    from app.models import Certificate, JobQueue, CertificateLedgerEntry
     user_ids = request.json['user_ids']
     users = User.query.filter(User.id.in_(user_ids)).all()
 
@@ -648,18 +648,22 @@ def delete_users():
                 except OSError:
                     pass
 
-        # 3. Delete Certificate record (FK: certificates.user_id → users.id)
+        # 3. Delete CertificateLedgerEntry records (FK: certificate_ledger.cert_id → certificates.id)
+        if u.certificate_id:
+            CertificateLedgerEntry.query.filter_by(cert_id=u.certificate_id).delete(synchronize_session=False)
+
+        # 4. Delete Certificate record (FK: certificates.user_id → users.id)
         if u.certificate_id:
             cert = Certificate.query.get(u.certificate_id)
             if cert:
                 db.session.delete(cert)
 
-        # 4. Nullify / delete orphaned AuditLog rows for this user
+        # 5. Nullify / delete orphaned AuditLog rows for this user
         AuditLog.query.filter_by(user_id=u.id).update({'user_id': None}, synchronize_session=False)
 
     db.session.flush()  # Flush FK-dependent deletes before bulk user delete
 
-    # 5. Now safe to delete the user rows
+    # 6. Now safe to delete the user rows
     User.query.filter(User.id.in_(user_ids)).delete(synchronize_session=False)
     db.session.add(AuditLog(action='deleted', performed_by=current_user.email, details={'count': len(user_ids)}))
     db.session.commit()
